@@ -1,0 +1,4 @@
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+SESSION_SECRET=generate-with-openssl-rand-hex-32
+ALLOWED_ORIGIN=http://localhost:5173
