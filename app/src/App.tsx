@@ -59,6 +59,7 @@ export default function App() {
     if (stored) return stored === 'dark';
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
+  const [familyConflict, setFamilyConflict] = useState<string | null>(null);
 
   // Invite token — read from URL on load, persist through auth redirect
   const urlToken = new URLSearchParams(window.location.search).get('join');
@@ -74,8 +75,17 @@ export default function App() {
     inviteToken.current = null;
     // Clean URL
     window.history.replaceState({}, '', window.location.pathname);
-    api.joinFamily(token).catch(() => {});
+    api.joinFamily(token).then(result => {
+      if (result.conflict) setFamilyConflict(token);
+    }).catch(() => {});
   }, [auth.status]);
+
+  async function handleForceJoin() {
+    if (!familyConflict) return;
+    const token = familyConflict;
+    setFamilyConflict(null);
+    await api.joinFamily(token, true).catch(() => {});
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -84,6 +94,25 @@ export default function App() {
 
   return (
     <AuthGate status={auth.status} hasInvite={!!inviteToken.current} onLogin={login}>
+      {familyConflict && (
+        <div className="sheet-overlay" onClick={() => setFamilyConflict(null)}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">Switch Families?</span>
+            </div>
+            <div className="sheet-body">
+              <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.6 }}>
+                You're already a member of a family plan. Joining this family will remove you from your current one.
+              </p>
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setFamilyConflict(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleForceJoin}>Join New Family</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="app-shell">
         <header className="app-header">
           <span className="app-header-title">{VIEW_TITLES[view]}</span>
@@ -110,6 +139,7 @@ export default function App() {
               onLogout={logout}
               darkMode={darkMode}
               onToggleDark={() => setDarkMode(d => !d)}
+              onLeaveFamily={() => window.location.reload()}
             />
           )}
         </main>

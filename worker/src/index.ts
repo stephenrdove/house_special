@@ -1,6 +1,6 @@
 import { handleCallback, handleLogin, handleLogout, handleMe, requireAuth } from './auth.ts';
-import { getFamilyId, getState, putState, updateGroceryItem } from './db.ts';
-import { handleCreateInvite, handleGetFamily, handleJoinFamily } from './handlers/family.ts';
+import { createFamilyForUser, getFamilyId, getState, putState, updateGroceryItem } from './db.ts';
+import { handleCreateInvite, handleGetFamily, handleJoinFamily, handleLeaveFamily, handleUpdatePrompt } from './handlers/family.ts';
 import type { AppState, Env } from './types.ts';
 
 export default {
@@ -27,6 +27,10 @@ export default {
       response = await handleCreateInvite(request, env);
     else if (url.pathname === '/families/join' && request.method === 'POST')
       response = await handleJoinFamily(request, env);
+    else if (url.pathname === '/families/me' && request.method === 'DELETE')
+      response = await handleLeaveFamily(request, env);
+    else if (url.pathname === '/families/prompt' && request.method === 'PUT')
+      response = await handleUpdatePrompt(request, env);
 
     // ── State routes ───────────────────────────────────────────────────────────
     else if (url.pathname === '/state' && request.method === 'GET')
@@ -58,19 +62,23 @@ export default {
 // ── Inline state handlers (need familyId context) ─────────────────────────────
 
 async function handleGetState(request: Request, env: Env): Promise<Response> {
-  const ctx = await authContext(request, env);
-  if (!ctx) return json({ error: 'Unauthorized' }, 401);
-  const state = await getState(env.DB, ctx.familyId);
+  const userId = await requireAuth(request, env);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+  const familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) return json({ meals: {}, grocery: [] });
+  const state = await getState(env.DB, familyId);
   return json(state);
 }
 
 async function handlePutState(request: Request, env: Env): Promise<Response> {
-  const ctx = await authContext(request, env);
-  if (!ctx) return json({ error: 'Unauthorized' }, 401);
+  const userId = await requireAuth(request, env);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
   let state: AppState;
   try { state = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
   if (!state.meals || !Array.isArray(state.grocery)) return json({ error: 'Invalid state shape' }, 400);
-  await putState(env.DB, ctx.familyId, state);
+  let familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
+  await putState(env.DB, familyId, state);
   return json({ ok: true });
 }
 
@@ -109,7 +117,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   const allowed = origin === env.ALLOWED_ORIGIN ? origin : env.ALLOWED_ORIGIN;
   return {
     'Access-Control-Allow-Origin':      allowed,
-    'Access-Control-Allow-Methods':     'GET, PUT, PATCH, POST, OPTIONS',
+    'Access-Control-Allow-Methods':     'GET, PUT, PATCH, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers':     'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
   };

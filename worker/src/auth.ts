@@ -150,15 +150,9 @@ export async function handleCallback(request: Request, env: Env): Promise<Respon
     ).bind(payload.email, payload.name, payload.picture, now, userId).run();
   } else {
     userId = crypto.randomUUID();
-    const familyId = crypto.randomUUID();
-    await env.DB.batch([
-      env.DB.prepare(
-        'INSERT INTO families (id, owner_id, created_at) VALUES (?,?,?)'
-      ).bind(familyId, userId, now),
-      env.DB.prepare(
-        'INSERT INTO users (id, google_id, email, name, picture, family_id, created_at, last_seen) VALUES (?,?,?,?,?,?,?,?)'
-      ).bind(userId, payload.sub, payload.email, payload.name, payload.picture, familyId, now, now),
-    ]);
+    await env.DB.prepare(
+      'INSERT INTO users (id, google_id, email, name, picture, created_at, last_seen) VALUES (?,?,?,?,?,?,?)'
+    ).bind(userId, payload.sub, payload.email, payload.name, payload.picture, now, now).run();
   }
 
   const token = await createSessionToken(userId, env.SESSION_SECRET);

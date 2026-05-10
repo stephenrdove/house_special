@@ -1,8 +1,9 @@
 CREATE TABLE IF NOT EXISTS families (
-  id         TEXT PRIMARY KEY,
-  name       TEXT NOT NULL DEFAULT 'Our Family',
-  owner_id   TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL DEFAULT 'Our Family',
+  owner_id       TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  prompt_context TEXT
 );
 
 CREATE TABLE IF NOT EXISTS users (

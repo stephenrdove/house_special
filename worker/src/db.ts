@@ -64,6 +64,16 @@ export async function getFamilyId(db: D1Database, userId: string): Promise<strin
   return row?.family_id ?? null;
 }
 
+export async function createFamilyForUser(db: D1Database, userId: string): Promise<string> {
+  const familyId = crypto.randomUUID();
+  const now = Date.now();
+  await db.batch([
+    db.prepare('INSERT INTO families (id, owner_id, created_at) VALUES (?,?,?)').bind(familyId, userId, now),
+    db.prepare('UPDATE users SET family_id = ? WHERE id = ?').bind(familyId, userId),
+  ]);
+  return familyId;
+}
+
 export async function getFamilyMembers(
   db: D1Database, familyId: string,
 ): Promise<{ id: string; name: string; email: string; picture: string; is_owner: boolean }[]> {
@@ -74,6 +84,21 @@ export async function getFamilyMembers(
       .bind(familyId).first<{ owner_id: string }>(),
   ]);
   return members.results.map(m => ({ ...m, is_owner: m.id === family?.owner_id }));
+}
+
+export async function getFamilyPromptContext(
+  db: D1Database, familyId: string,
+): Promise<string | null> {
+  const row = await db.prepare('SELECT prompt_context FROM families WHERE id = ?')
+    .bind(familyId).first<{ prompt_context: string | null }>();
+  return row?.prompt_context ?? null;
+}
+
+export async function setFamilyPromptContext(
+  db: D1Database, familyId: string, context: string | null,
+): Promise<void> {
+  await db.prepare('UPDATE families SET prompt_context = ? WHERE id = ?')
+    .bind(context, familyId).run();
 }
 
 export async function createInviteToken(
@@ -88,9 +113,43 @@ export async function createInviteToken(
   return token;
 }
 
+export async function leaveFamily(db: D1Database, userId: string): Promise<void> {
+  const [user, ownerOf] = await Promise.all([
+    db.prepare('SELECT family_id FROM users WHERE id = ?')
+      .bind(userId).first<{ family_id: string | null }>(),
+    db.prepare('SELECT id FROM families WHERE owner_id = ?')
+      .bind(userId).first<{ id: string }>(),
+  ]);
+
+  if (!user?.family_id) return;
+  const familyId = user.family_id;
+
+  const statements: D1PreparedStatement[] = [
+    db.prepare('UPDATE users SET family_id = NULL WHERE id = ?').bind(userId),
+  ];
+
+  if (ownerOf) {
+    const nextOwner = await db.prepare(
+      'SELECT id FROM users WHERE family_id = ? AND id != ? LIMIT 1'
+    ).bind(familyId, userId).first<{ id: string }>();
+
+    if (nextOwner) {
+      statements.push(
+        db.prepare('UPDATE families SET owner_id = ? WHERE id = ?').bind(nextOwner.id, familyId)
+      );
+    } else {
+      statements.push(
+        db.prepare('DELETE FROM families WHERE id = ?').bind(familyId)
+      );
+    }
+  }
+
+  await db.batch(statements);
+}
+
 export async function acceptInvite(
-  db: D1Database, userId: string, token: string,
-): Promise<{ ok: boolean; error?: string }> {
+  db: D1Database, userId: string, token: string, force = false,
+): Promise<{ ok: boolean; error?: string; conflict?: boolean }> {
   const invite = await db.prepare(
     'SELECT family_id, expires_at FROM family_invites WHERE token = ?'
   ).bind(token).first<{ family_id: string; expires_at: number }>();
@@ -101,8 +160,12 @@ export async function acceptInvite(
   const user = await db.prepare('SELECT family_id FROM users WHERE id = ?')
     .bind(userId).first<{ family_id: string | null }>();
 
-  if (user?.family_id === invite.family_id) return { ok: true }; // already in this family
-  if (user?.family_id) return { ok: false, error: 'You are already a member of a family plan' };
+  if (user?.family_id === invite.family_id) return { ok: true };
+
+  if (user?.family_id) {
+    if (!force) return { ok: false, error: 'You are already a member of a family plan', conflict: true };
+    await leaveFamily(db, userId);
+  }
 
   await db.batch([
     db.prepare('UPDATE users SET family_id = ? WHERE id = ?').bind(invite.family_id, userId),

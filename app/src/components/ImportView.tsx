@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '../api';
 import { buildPlanningPrompt } from '../utils/planningPrompt';
 import type { AppState, GroceryItem } from '../types';
 
@@ -12,9 +13,16 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
   const [json, setJson] = useState('');
   const [status, setStatus] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [copyLabel, setCopyLabel] = useState('Copy Planning Prompt');
+  const [promptContext, setPromptContext] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getFamily()
+      .then(data => setPromptContext(data.promptContext))
+      .catch(() => {});
+  }, []);
 
   async function copyPrompt() {
-    await navigator.clipboard.writeText(buildPlanningPrompt(state));
+    await navigator.clipboard.writeText(buildPlanningPrompt(state, promptContext));
     setCopyLabel('Copied!');
     setTimeout(() => setCopyLabel('Copy Planning Prompt'), 2500);
   }
