@@ -1,6 +1,7 @@
 import { handleCallback, handleLogin, handleLogout, handleMe, requireAuth } from './auth.ts';
 import { createFamilyForUser, getFamilyId, getState, putState, updateGroceryItem } from './db.ts';
-import { handleCreateInvite, handleGetFamily, handleJoinFamily, handleLeaveFamily, handleUpdatePrompt } from './handlers/family.ts';
+import { handleCreateInvite, handleGetFamily, handleJoinFamily, handleLeaveFamily, handleUpdateConstraints } from './handlers/family.ts';
+import { handleGenerate } from './handlers/generate.ts';
 import type { AppState, Env } from './types.ts';
 
 export default {
@@ -29,8 +30,10 @@ export default {
       response = await handleJoinFamily(request, env);
     else if (url.pathname === '/families/me' && request.method === 'DELETE')
       response = await handleLeaveFamily(request, env);
-    else if (url.pathname === '/families/prompt' && request.method === 'PUT')
-      response = await handleUpdatePrompt(request, env);
+    else if (url.pathname === '/families/constraints' && request.method === 'PUT')
+      response = await handleUpdateConstraints(request, env);
+    else if (url.pathname === '/families/generate' && request.method === 'POST')
+      response = await handleGenerate(request, env);
 
     // ── State routes ───────────────────────────────────────────────────────────
     else if (url.pathname === '/state' && request.method === 'GET')

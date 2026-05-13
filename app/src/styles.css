@@ -600,6 +600,64 @@ textarea.input {
 }
 .toggle input:checked + .toggle-track::after { transform: translateX(18px); }
 
+/* ── TAG INPUT ──────────────────────────────────────────────────────────── */
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  min-height: 44px;
+  transition: border-color 0.15s;
+  cursor: text;
+}
+.tag-input:focus-within { border-color: var(--accent); }
+.tag-input-danger:focus-within { border-color: var(--red); }
+.tag-input input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  min-width: 80px;
+  flex: 1;
+  padding: 2px 4px;
+}
+.tag-input input::placeholder { color: var(--text2); }
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px 4px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--text);
+}
+.tag button {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+.tag button:hover { color: var(--text); }
+.tag-danger {
+  background: var(--red-light);
+  border-color: var(--red);
+  color: var(--red);
+}
+.tag-danger button { color: var(--red); opacity: 0.7; }
+.tag-danger button:hover { opacity: 1; }
+
 /* ── UTILITY ────────────────────────────────────────────────────────────── */
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .divider { height: 1px; background: var(--border); }

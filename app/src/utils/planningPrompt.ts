@@ -1,45 +1,23 @@
-import type { AppState } from '../types';
+import type { AppState, FamilyConstraints } from '../types';
+import { DEFAULT_CONSTRAINTS } from '../types';
 
-export const DEFAULT_FAMILY_CONTEXT = `Plan 14 days of family dinners for a family of 3 eaters: one adult man, one adult woman, and one 2.5-year-old toddler. Generate a complete grocery shopping list organized by store section.
-
-**Dietary requirements:**
-- Strictly gluten-free — the mom has celiac disease. No wheat, barley, rye, or hidden gluten. Watch for: soy sauce (use tamari), malt vinegar, non-GF oats, flour-dusted frozen foods, and seasoning packets
-- Toddler-friendly — simple flavors, no spicy food, soft textures or finger-food friendly when possible
-- No elaborate or time-consuming recipes — 30–45 minutes or less on weeknights
-
-**Meal plan structure:**
-- Plan dinner for all 14 days
-- Include 2 leftover nights spread across the two weeks
-- Repeating meals across Week 1 and Week 2 is totally fine and encouraged
-- Keep it practical and filling
-
-**Our go-to meals — pull from these regularly:**
-- Al Fresco chicken meatballs with GF pasta and marinara
-- Kevin's brand pre-cooked sous vide meats (e.g. Korean BBQ chicken, Tikka Masala) over jasmine rice with a simple veggie
-- Bubba Burgers on GF buns
-- Chicken burgers (Costco-style) on GF buns
-- Hotdog night — GF hotdogs on GF buns
-- Frozen GF pizza night (e.g. Udi's, Against the Grain)
-- Egg scramble or egg/cheese/avocado/bacon sandwich on GF bread
-- Taco night with corn tortillas, ground beef or chicken
-- Rice bowls — protein + jasmine rice + veggie
-- Roasted chicken thighs with oven-roasted veggies
-- GF stir fry over rice with tamari
-
-**Wednesday — Special Night:**
-Alternates each fortnight between:
-- **Fan Favorite Night** — rotate through: ⭐ Chicken and Cashew, ⭐ Sesame Chicken, ⭐ Chicken Parmesan (all GF)
-- **Try Something New Night** — GF, toddler-friendly, more adventurous
-
-Label Wednesday clearly: "⭐ Fan Favorite: Sesame Chicken" or "🆕 New: Thai Basil Beef Bowl"`;
-
-function getNextSunday(): string {
+export function getNextSunday(): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const daysUntil = (7 - today.getDay()) % 7 || 7;
   const next = new Date(today);
   next.setDate(today.getDate() + daysUntil);
   return next.toISOString().slice(0, 10);
+}
+
+function buildWeekSchedule(startDateStr: string): string {
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const start = new Date(startDateStr + 'T00:00:00');
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return `${dayNames[d.getDay()]} ${d.toISOString().slice(0, 10)}`;
+  }).join('\n');
 }
 
 function getRecentMeals(state: AppState): string {
@@ -55,25 +33,81 @@ function getRecentMeals(state: AppState): string {
     .join('\n');
 }
 
-// Not exported — the JSON format spec must never appear in an editable field.
-function buildLockedSection(state: AppState): string {
-  const startDate = getNextSunday();
+function buildFamilyContext(c: FamilyConstraints): string {
+  const totalEaters = c.family.adults + c.family.children.length;
+  const familyParts: string[] = [];
+  if (c.family.adults === 1) familyParts.push('one adult');
+  else familyParts.push(`${c.family.adults} adults`);
+  for (const child of c.family.children) {
+    familyParts.push(`one ${child.age}-year-old`);
+  }
+
+  const lines: string[] = [
+    `Plan 7 days of family dinners for a family of ${totalEaters} eater${totalEaters !== 1 ? 's' : ''}: ${familyParts.join(', ')}. Generate a complete grocery shopping list organized by store section.`,
+  ];
+
+  const dietaryLines: string[] = [];
+  if (c.allergies.length > 0) {
+    dietaryLines.push(`- ALLERGIES (safety-critical — hard constraints, no exceptions): ${c.allergies.join(', ')}`);
+  }
+  if (c.dietary_restrictions.length > 0) {
+    dietaryLines.push(`- Dietary restrictions: ${c.dietary_restrictions.join(', ')}`);
+  }
+  if (c.family.children.some(ch => ch.age < 5)) {
+    dietaryLines.push('- Toddler-friendly — simple flavors, no spicy food, soft textures or finger-food friendly when possible');
+  }
+  dietaryLines.push('- No elaborate or time-consuming recipes — 30–45 minutes or less on weeknights');
+
+  lines.push('', '**Dietary requirements:**', ...dietaryLines);
+
+  lines.push(
+    '',
+    '**Meal plan structure:**',
+    '- Plan dinner for all 7 days',
+    '- Include 1 leftover night',
+    '- Keep meal names short and simple (2–5 words)',
+    '- Keep it practical and filling',
+  );
+
+  if (c.favorites.length > 0) {
+    lines.push('', '**Go-to meals — pull from these regularly:**', ...c.favorites.map(f => `- ${f}`));
+  }
+
+  if (c.avoid.length > 0) {
+    lines.push('', `**Avoid these ingredients/dishes:** ${c.avoid.join(', ')}`);
+  }
+
+  if (c.preferred_cuisines.length > 0) {
+    lines.push('', `**Preferred cuisines:** ${c.preferred_cuisines.join(', ')}`);
+  }
+
+  if (c.notes.trim()) {
+    lines.push('', '**Additional notes:**', c.notes.trim());
+  }
+
+  return lines.join('\n');
+}
+
+// Not exported — the JSON format spec must never appear in a user-editable field.
+function buildLockedSection(state: AppState, startDate: string): string {
   const recentMeals = getRecentMeals(state);
   const recentSection = recentMeals
     ? `\n\n**Recent meals — avoid repeating these in the upcoming plan:**\n${recentMeals}`
     : '';
 
-  return `**Output format: valid JSON only.** No explanation, no markdown, no extra text.
+  return `**Week schedule:**
+${buildWeekSchedule(startDate)}
+
+**Output format: valid JSON only.** No explanation, no markdown, no extra text. Do not create an artifact, canvas, or interactive view. The response must start with { and end with }
 
 {
   "weeks": [
     {
       "week": 1,
       "days": [
-        { "date": "YYYY-MM-DD", "meal": "Meal name", "notes": "optional", "leftover": false }
+        { "date": "YYYY-MM-DD", "meal": "Meal name", "notes": "", "leftover": false }
       ]
-    },
-    { "week": 2, "days": [...] }
+    }
   ],
   "grocery": [
     { "category": "Produce", "name": "Item name", "warn": false },
@@ -82,14 +116,14 @@ function buildLockedSection(state: AppState): string {
 }
 
 **Rules:**
-- "leftover": true for leftover nights
-- "warn": true for items needing certified GF versions
-- Dates start from ${startDate}
-- Categories: Produce, Meat & Seafood, Dairy & Eggs, Frozen, Pantry / Dry Goods, Canned Goods, Condiments & Sauces, Other
-- Don't repeat the same Wednesday Fan Favorite two fortnights in a row${recentSection}`;
+- "leftover": true for the 1 leftover night
+- "warn": true for items needing certified allergy-safe versions (e.g. certified GF)
+- "notes": keep empty or 1 short phrase max — no verbose descriptions
+- Categories: Produce, Meat & Seafood, Dairy & Eggs, Frozen, Pantry / Dry Goods, Canned Goods, Condiments & Sauces, Other${recentSection}`;
 }
 
-export function buildPlanningPrompt(state: AppState, familyContext?: string | null): string {
-  const editable = (familyContext ?? '').trim() || DEFAULT_FAMILY_CONTEXT;
-  return `${editable}\n\n${buildLockedSection(state)}`;
+export function buildPlanningPrompt(state: AppState, constraints?: FamilyConstraints | null, startDate?: string): string {
+  const c = constraints ?? DEFAULT_CONSTRAINTS;
+  const date = startDate ?? getNextSunday();
+  return `${buildFamilyContext(c)}\n\n${buildLockedSection(state, date)}`;
 }

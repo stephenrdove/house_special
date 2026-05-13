@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx wrangler *)"
+      "Bash(npx wrangler *)",
+      "Bash(npm install *)",
+      "Bash(nvm --version)",
+      "Bash(volta --version)",
+      "Bash(fnm --version)"
     ]
   }
 }

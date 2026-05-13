@@ -1,5 +1,5 @@
 import { requireAuth } from '../auth.ts';
-import { acceptInvite, createInviteToken, getFamilyId, getFamilyMembers, getFamilyPromptContext, leaveFamily, setFamilyPromptContext } from '../db.ts';
+import { acceptInvite, createInviteToken, getFamilyConstraints, getFamilyId, getFamilyMembers, leaveFamily, setFamilyConstraints } from '../db.ts';
 import type { Env } from '../types.ts';
 
 export async function handleGetFamily(request: Request, env: Env): Promise<Response> {
@@ -7,14 +7,15 @@ export async function handleGetFamily(request: Request, env: Env): Promise<Respo
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
   const familyId = await getFamilyId(env.DB, userId);
-  if (!familyId) return json({ familyId: null, members: [], promptContext: null });
+  if (!familyId) return json({ familyId: null, members: [], constraints: null });
 
-  const [members, promptContext] = await Promise.all([
+  const [members, constraintsRaw] = await Promise.all([
     getFamilyMembers(env.DB, familyId),
-    getFamilyPromptContext(env.DB, familyId),
+    getFamilyConstraints(env.DB, familyId),
   ]);
 
-  return json({ familyId, members, promptContext });
+  const constraints = constraintsRaw ? JSON.parse(constraintsRaw) : null;
+  return json({ familyId, members, constraints });
 }
 
 export async function handleCreateInvite(request: Request, env: Env): Promise<Response> {
@@ -52,18 +53,18 @@ export async function handleLeaveFamily(request: Request, env: Env): Promise<Res
   return json({ ok: true });
 }
 
-export async function handleUpdatePrompt(request: Request, env: Env): Promise<Response> {
+export async function handleUpdateConstraints(request: Request, env: Env): Promise<Response> {
   const userId = await requireAuth(request, env);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
   const familyId = await getFamilyId(env.DB, userId);
   if (!familyId) return json({ error: 'No family found' }, 404);
 
-  let body: { context: string | null };
+  let body: { constraints: unknown };
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+  if (!body.constraints || typeof body.constraints !== 'object') return json({ error: 'constraints object required' }, 400);
 
-  const context = body.context === null ? null : String(body.context).trim() || null;
-  await setFamilyPromptContext(env.DB, familyId, context);
+  await setFamilyConstraints(env.DB, familyId, JSON.stringify(body.constraints));
   return json({ ok: true });
 }
 

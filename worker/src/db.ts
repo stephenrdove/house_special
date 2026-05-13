@@ -86,19 +86,19 @@ export async function getFamilyMembers(
   return members.results.map(m => ({ ...m, is_owner: m.id === family?.owner_id }));
 }
 
-export async function getFamilyPromptContext(
+export async function getFamilyConstraints(
   db: D1Database, familyId: string,
 ): Promise<string | null> {
-  const row = await db.prepare('SELECT prompt_context FROM families WHERE id = ?')
-    .bind(familyId).first<{ prompt_context: string | null }>();
-  return row?.prompt_context ?? null;
+  const row = await db.prepare('SELECT constraints FROM families WHERE id = ?')
+    .bind(familyId).first<{ constraints: string | null }>();
+  return row?.constraints ?? null;
 }
 
-export async function setFamilyPromptContext(
-  db: D1Database, familyId: string, context: string | null,
+export async function setFamilyConstraints(
+  db: D1Database, familyId: string, constraints: string | null,
 ): Promise<void> {
-  await db.prepare('UPDATE families SET prompt_context = ? WHERE id = ?')
-    .bind(context, familyId).run();
+  await db.prepare('UPDATE families SET constraints = ? WHERE id = ?')
+    .bind(constraints, familyId).run();
 }
 
 export async function createInviteToken(

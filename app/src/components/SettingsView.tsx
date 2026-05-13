@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { FamilyMember, User } from '../types';
-import { DEFAULT_FAMILY_CONTEXT } from '../utils/planningPrompt';
+import type { FamilyConstraints, FamilyMember, User } from '../types';
+import { DEFAULT_CONSTRAINTS } from '../types';
+import { TagInput } from './TagInput';
 
 interface Props {
   user: User;
@@ -11,46 +12,81 @@ interface Props {
   onLeaveFamily: () => void;
 }
 
+function Stepper({ label, value, onChange, min = 0 }: { label: string; value: number; onChange: (n: number) => void; min?: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ fontSize: 14, color: 'var(--text)' }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          style={{ width: 32, height: 32, padding: 0, fontSize: 18 }}
+          onClick={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+        >−</button>
+        <span style={{ fontSize: 16, fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{value}</span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          style={{ width: 32, height: 32, padding: 0, fontSize: 18 }}
+          onClick={() => onChange(value + 1)}
+        >+</button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView({ user, onLogout, darkMode, onToggleDark, onLeaveFamily }: Props) {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [inviteLabel, setInviteLabel] = useState('Invite family member');
   const [inviteError, setInviteError] = useState('');
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  const [promptContext, setPromptContext] = useState(DEFAULT_FAMILY_CONTEXT);
-  const [promptDirty, setPromptDirty] = useState(false);
-  const [promptSaveLabel, setPromptSaveLabel] = useState<'Save' | 'Saved!' | 'Error'>('Save');
+  const [constraints, setConstraints] = useState<FamilyConstraints>(DEFAULT_CONSTRAINTS);
+  const [constraintsDirty, setConstraintsDirty] = useState(false);
+  const [saveLabel, setSaveLabel] = useState<'Save preferences' | 'Saved!' | 'Error'>('Save preferences');
 
   useEffect(() => {
     api.getFamily()
       .then(data => {
         setMembers(data.members);
-        setPromptContext(data.promptContext ?? DEFAULT_FAMILY_CONTEXT);
+        if (data.constraints) setConstraints(data.constraints);
       })
       .catch(() => {});
   }, []);
 
-  async function handleSavePrompt() {
-    const trimmed = promptContext.trim();
-    const valueToSave = trimmed === DEFAULT_FAMILY_CONTEXT.trim() ? null : trimmed || null;
+  function update(patch: Partial<FamilyConstraints>) {
+    setConstraints(prev => ({ ...prev, ...patch }));
+    setConstraintsDirty(true);
+  }
+
+  function updateFamily(patch: Partial<FamilyConstraints['family']>) {
+    setConstraints(prev => ({ ...prev, family: { ...prev.family, ...patch } }));
+    setConstraintsDirty(true);
+  }
+
+  function setChildAge(index: number, age: number) {
+    const children = constraints.family.children.map((c, i) => i === index ? { age } : c);
+    updateFamily({ children });
+  }
+
+  function addChild() {
+    updateFamily({ children: [...constraints.family.children, { age: 1 }] });
+  }
+
+  function removeChild(index: number) {
+    updateFamily({ children: constraints.family.children.filter((_, i) => i !== index) });
+  }
+
+  async function handleSave() {
     try {
-      await api.updatePrompt(valueToSave);
-      setPromptDirty(false);
-      setPromptSaveLabel('Saved!');
-      setTimeout(() => setPromptSaveLabel('Save'), 2500);
+      await api.updateConstraints(constraints);
+      setConstraintsDirty(false);
+      setSaveLabel('Saved!');
+      setTimeout(() => setSaveLabel('Save preferences'), 2500);
     } catch {
-      setPromptSaveLabel('Error');
-      setTimeout(() => setPromptSaveLabel('Save'), 2500);
+      setSaveLabel('Error');
+      setTimeout(() => setSaveLabel('Save preferences'), 2500);
     }
-  }
-
-  function handleResetPrompt() {
-    setPromptContext(DEFAULT_FAMILY_CONTEXT);
-    setPromptDirty(true);
-  }
-
-  async function handleLeave() {
-    await api.leaveFamily().catch(() => {});
-    onLeaveFamily();
   }
 
   async function handleInvite() {
@@ -63,6 +99,11 @@ export function SettingsView({ user, onLogout, darkMode, onToggleDark, onLeaveFa
     } catch {
       setInviteError('Failed to generate invite link. Try again.');
     }
+  }
+
+  async function handleLeave() {
+    await api.leaveFamily().catch(() => {});
+    onLeaveFamily();
   }
 
   return (
@@ -88,7 +129,7 @@ export function SettingsView({ user, onLogout, darkMode, onToggleDark, onLeaveFa
           </div>
         </div>
 
-        {/* Family */}
+        {/* Family Members */}
         <div className="card">
           <div className="section-label">Family Plan</div>
           {members.map(member => (
@@ -146,36 +187,104 @@ export function SettingsView({ user, onLogout, darkMode, onToggleDark, onLeaveFa
           </div>
         )}
 
-        {/* Planning Prompt */}
+        {/* Family Preferences */}
         <div className="card">
-          <div className="section-label">Planning Prompt</div>
-          <div style={{ padding: '0 16px 16px' }}>
-            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 12 }}>
-              Customize the family instructions sent to Claude when generating your meal plan. The JSON format requirements are always added automatically — you can't break the import.
+          <div className="section-label">Family Preferences</div>
+          <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>
+              These preferences are used when generating your meal plan. Keep them up to date as your family changes.
             </p>
-            <textarea
-              className="input"
-              value={promptContext}
-              onChange={e => { setPromptContext(e.target.value); setPromptDirty(true); }}
-              rows={14}
-              style={{ fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={handleResetPrompt}
-                disabled={promptContext.trim() === DEFAULT_FAMILY_CONTEXT.trim()}
-              >
-                Reset to default
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleSavePrompt}
-                disabled={!promptDirty}
-              >
-                {promptSaveLabel}
+
+            {/* Family composition */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label className="field-label">Family composition</label>
+              <Stepper label="Adults" value={constraints.family.adults} onChange={n => updateFamily({ adults: n })} min={1} />
+              {constraints.family.children.map((child, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14, color: 'var(--text)', flex: 1 }}>Child {i + 1} age</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ width: 32, height: 32, padding: 0, fontSize: 18 }}
+                      onClick={() => setChildAge(i, Math.max(0, child.age - 1))}
+                      disabled={child.age <= 0}
+                    >−</button>
+                    <span style={{ fontSize: 16, fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{child.age}</span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ width: 32, height: 32, padding: 0, fontSize: 18 }}
+                      onClick={() => setChildAge(i, child.age + 1)}
+                    >+</button>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      style={{ padding: '0 10px', height: 32, fontSize: 13 }}
+                      onClick={() => removeChild(i)}
+                    >Remove</button>
+                  </div>
+                </div>
+              ))}
+              <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addChild}>
+                + Add child
               </button>
             </div>
+
+            <TagInput
+              label="Allergies"
+              tags={constraints.allergies}
+              onChange={allergies => update({ allergies })}
+              placeholder="e.g. gluten, peanuts…"
+              danger
+            />
+
+            <TagInput
+              label="Dietary restrictions"
+              tags={constraints.dietary_restrictions}
+              onChange={dietary_restrictions => update({ dietary_restrictions })}
+              placeholder="e.g. vegetarian, no pork…"
+            />
+
+            <TagInput
+              label="Go-to meals"
+              tags={constraints.favorites}
+              onChange={favorites => update({ favorites })}
+              placeholder="e.g. Taco night, GF pasta…"
+            />
+
+            <TagInput
+              label="Avoid"
+              tags={constraints.avoid}
+              onChange={avoid => update({ avoid })}
+              placeholder="e.g. mushrooms, fish…"
+            />
+
+            <TagInput
+              label="Preferred cuisines"
+              tags={constraints.preferred_cuisines}
+              onChange={preferred_cuisines => update({ preferred_cuisines })}
+              placeholder="e.g. Italian, Mexican…"
+            />
+
+            <div>
+              <label className="field-label">Additional notes</label>
+              <textarea
+                className="input"
+                value={constraints.notes}
+                onChange={e => update({ notes: e.target.value })}
+                rows={4}
+                placeholder="Anything that doesn't fit above — special meal rules, brand preferences, etc."
+              />
+            </div>
+
+            <button
+              className="btn btn-primary btn-full"
+              onClick={handleSave}
+              disabled={!constraintsDirty}
+            >
+              {saveLabel}
+            </button>
           </div>
         </div>
 

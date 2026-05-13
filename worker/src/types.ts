@@ -4,6 +4,7 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
   ALLOWED_ORIGIN: string;
+  ANTHROPIC_API_KEY: string;
 }
 
 export interface User {
