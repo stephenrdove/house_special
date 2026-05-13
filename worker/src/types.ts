@@ -19,6 +19,7 @@ export interface Meal {
   name: string;
   notes: string;
   leftover: boolean;
+  recipe_id?: string;
 }
 
 export interface GroceryItem {

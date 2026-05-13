@@ -4,6 +4,7 @@ import { AuthGate } from './components/AuthGate';
 import { CalendarView } from './components/CalendarView';
 import { GroceryView } from './components/GroceryView';
 import { ImportView } from './components/ImportView';
+import { RecipesView } from './components/RecipesView';
 import { SettingsView } from './components/SettingsView';
 import { SyncIndicator } from './components/SyncIndicator';
 import { useAuth } from './hooks/useAuth';
@@ -34,6 +35,14 @@ function ImportIcon() {
     </svg>
   );
 }
+function RecipeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </svg>
+  );
+}
 function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -47,6 +56,7 @@ const VIEW_TITLES: Record<View, string> = {
   calendar: 'House Special',
   grocery: 'Groceries',
   import: 'Import',
+  recipes: 'Recipes',
   settings: 'Settings',
 };
 
@@ -126,6 +136,7 @@ export default function App() {
         <main className="main-content">
           {view === 'calendar' && <CalendarView state={state} mutate={mutate} />}
           {view === 'grocery' && <GroceryView state={state} mutate={mutate} />}
+          {view === 'recipes' && <RecipesView />}
           {view === 'import' && (
             <ImportView
               state={state}
@@ -151,6 +162,7 @@ export default function App() {
             { id: 'calendar', label: 'Calendar', icon: <CalIcon active={view === 'calendar'} /> },
             { id: 'grocery',  label: 'Groceries', icon: <GrocIcon /> },
             { id: 'import',   label: 'Import',    icon: <ImportIcon /> },
+            { id: 'recipes',  label: 'Recipes',   icon: <RecipeIcon /> },
             { id: 'settings', label: 'Settings',  icon: <SettingsIcon /> },
           ] as { id: View; label: string; icon: React.ReactNode }[]).map(tab => (
             <button

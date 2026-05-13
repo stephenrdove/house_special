@@ -1,0 +1,360 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import type { ExtractedRecipe, Recipe } from '../types';
+
+type Sheet = 'none' | 'add' | 'preview' | 'detail' | 'delete-confirm';
+
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
+
+function RecipeCard({ recipe, onClick }: { recipe: Recipe; onClick: () => void }) {
+  return (
+    <div className="card" style={{ padding: 16, cursor: 'pointer' }} onClick={onClick}>
+      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{recipe.name}</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+        {recipe.ingredients.length} ingredient{recipe.ingredients.length !== 1 ? 's' : ''}
+        {recipe.source_url && ' · from URL'}
+      </div>
+      {recipe.tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+          {recipe.tags.map(tag => (
+            <span key={tag} className="tag" style={{ fontSize: 11 }}>{tag}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function RecipesView() {
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sheet, setSheet] = useState<Sheet>('none');
+
+  // Add sheet state
+  const [inputMode, setInputMode] = useState<'url' | 'text'>('url');
+  const [urlInput, setUrlInput] = useState('');
+  const [textInput, setTextInput] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState('');
+
+  // Preview sheet state
+  const [previewName, setPreviewName] = useState('');
+  const [previewSourceUrl, setPreviewSourceUrl] = useState('');
+  const [previewIngredients, setPreviewIngredients] = useState('');
+  const [previewSteps, setPreviewSteps] = useState('');
+  const [previewNotes, setPreviewNotes] = useState('');
+  const [previewTags, setPreviewTags] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Detail / delete state
+  const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    api.listRecipes()
+      .then(setRecipes)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  function openDetail(recipe: Recipe) {
+    setActiveRecipe(recipe);
+    setSheet('detail');
+  }
+
+  function closeSheet() {
+    setSheet('none');
+    setUrlInput('');
+    setTextInput('');
+    setExtractError('');
+  }
+
+  function populatePreview(extracted: ExtractedRecipe) {
+    setPreviewName(extracted.name);
+    setPreviewSourceUrl(extracted.source_url ?? '');
+    setPreviewIngredients(extracted.ingredients.join('\n'));
+    setPreviewSteps(extracted.steps.join('\n'));
+    setPreviewNotes(extracted.notes ?? '');
+    setPreviewTags(extracted.tags.join(', '));
+  }
+
+  async function handleExtract() {
+    setExtracting(true);
+    setExtractError('');
+    try {
+      const body = inputMode === 'url' ? { url: urlInput } : { text: textInput };
+      const extracted = await api.extractRecipe(body);
+      populatePreview(extracted);
+      setSheet('preview');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Extraction failed';
+      setExtractError(msg.includes('502') ? 'Could not fetch that URL. Try pasting the recipe text instead.' : 'Extraction failed. Try again.');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const recipe = {
+        name: previewName.trim(),
+        source_url: previewSourceUrl.trim() || null,
+        ingredients: previewIngredients.split('\n').map(s => s.trim()).filter(Boolean),
+        steps: previewSteps.split('\n').map(s => s.trim()).filter(Boolean),
+        notes: previewNotes.trim(),
+        tags: previewTags.split(',').map(s => s.trim()).filter(Boolean),
+      };
+      const { id } = await api.saveRecipe(recipe);
+      const saved: Recipe = { ...recipe, id, created_at: Date.now() };
+      setRecipes(prev => [saved, ...prev]);
+      closeSheet();
+    } catch {
+      // keep sheet open
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!activeRecipe) return;
+    setDeleting(true);
+    try {
+      await api.deleteRecipe(activeRecipe.id);
+      setRecipes(prev => prev.filter(r => r.id !== activeRecipe.id));
+      setSheet('none');
+      setActiveRecipe(null);
+    } catch {
+      // keep sheet open
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>Recipes</h2>
+        <button className="btn btn-primary btn-sm" onClick={() => setSheet('add')}>+ Add</button>
+      </div>
+
+      {loading && (
+        <p style={{ color: 'var(--text2)', fontSize: 14, textAlign: 'center', marginTop: 40 }}>Loading…</p>
+      )}
+
+      {!loading && recipes.length === 0 && (
+        <div style={{ textAlign: 'center', marginTop: 60, color: 'var(--text2)' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📖</div>
+          <p style={{ fontSize: 14 }}>No recipes yet.</p>
+          <p style={{ fontSize: 13, marginTop: 4 }}>Add one from a URL or paste recipe text.</p>
+        </div>
+      )}
+
+      {!loading && recipes.length > 0 && (
+        <div className="stack">
+          {recipes.map(recipe => (
+            <RecipeCard key={recipe.id} recipe={recipe} onClick={() => openDetail(recipe)} />
+          ))}
+        </div>
+      )}
+
+      {/* ── Add sheet ──────────────────────────────────────────────────────── */}
+      {sheet === 'add' && (
+        <div className="sheet-overlay" onClick={closeSheet}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">Add Recipe</span>
+              <button className="icon-btn" onClick={closeSheet}><CloseIcon /></button>
+            </div>
+            <div className="sheet-body">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className={`btn btn-sm ${inputMode === 'url' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setInputMode('url')}
+                >
+                  Paste URL
+                </button>
+                <button
+                  className={`btn btn-sm ${inputMode === 'text' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setInputMode('text')}
+                >
+                  Paste text
+                </button>
+              </div>
+
+              {inputMode === 'url' ? (
+                <div>
+                  <label className="field-label">Recipe URL</label>
+                  <input
+                    type="url"
+                    className="input"
+                    value={urlInput}
+                    onChange={e => setUrlInput(e.target.value)}
+                    placeholder="https://..."
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="field-label">Recipe text</label>
+                  <textarea
+                    className="input"
+                    value={textInput}
+                    onChange={e => setTextInput(e.target.value)}
+                    rows={8}
+                    placeholder="Paste the recipe here..."
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {extractError && (
+                <p style={{ fontSize: 13, color: 'var(--red)' }}>{extractError}</p>
+              )}
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={closeSheet}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={handleExtract}
+                disabled={extracting || (inputMode === 'url' ? !urlInput.trim() : !textInput.trim())}
+              >
+                {extracting ? (
+                  <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Extracting…</>
+                ) : 'Extract Recipe'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Preview sheet ──────────────────────────────────────────────────── */}
+      {sheet === 'preview' && (
+        <div className="sheet-overlay">
+          <div className="sheet">
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">Review Recipe</span>
+            </div>
+            <div className="sheet-body">
+              <p style={{ fontSize: 12, color: 'var(--text2)' }}>Check and edit before saving.</p>
+
+              <div>
+                <label className="field-label">Name</label>
+                <input className="input" value={previewName} onChange={e => setPreviewName(e.target.value)} />
+              </div>
+              <div>
+                <label className="field-label">Ingredients (one per line)</label>
+                <textarea className="input" value={previewIngredients} onChange={e => setPreviewIngredients(e.target.value)} rows={6} />
+              </div>
+              <div>
+                <label className="field-label">Steps (one per line)</label>
+                <textarea className="input" value={previewSteps} onChange={e => setPreviewSteps(e.target.value)} rows={6} />
+              </div>
+              <div>
+                <label className="field-label">Notes</label>
+                <textarea className="input" value={previewNotes} onChange={e => setPreviewNotes(e.target.value)} rows={2} />
+              </div>
+              <div>
+                <label className="field-label">Tags (comma-separated)</label>
+                <input className="input" value={previewTags} onChange={e => setPreviewTags(e.target.value)} placeholder="gluten-free, 30-min, pasta" />
+              </div>
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setSheet('add')}>Back</button>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={handleSave}
+                disabled={saving || !previewName.trim()}
+              >
+                {saving ? 'Saving…' : 'Save Recipe'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Detail sheet ───────────────────────────────────────────────────── */}
+      {sheet === 'detail' && activeRecipe && (
+        <div className="sheet-overlay" onClick={() => setSheet('none')}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">{activeRecipe.name}</span>
+              <button className="icon-btn" onClick={() => setSheet('none')}><CloseIcon /></button>
+            </div>
+            <div className="sheet-body">
+              {activeRecipe.tags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {activeRecipe.tags.map(tag => (
+                    <span key={tag} className="tag" style={{ fontSize: 11 }}>{tag}</span>
+                  ))}
+                </div>
+              )}
+              {activeRecipe.source_url && (
+                <a href={activeRecipe.source_url} target="_blank" rel="noopener noreferrer" className="recipe-source-link">
+                  {activeRecipe.source_url}
+                </a>
+              )}
+              <div>
+                <div className="section-label" style={{ padding: '0 0 8px' }}>Ingredients</div>
+                <ul className="recipe-ingredient-list">
+                  {activeRecipe.ingredients.map((ing, i) => <li key={i}>{ing}</li>)}
+                </ul>
+              </div>
+              {activeRecipe.steps.length > 0 && (
+                <div>
+                  <div className="section-label" style={{ padding: '0 0 8px' }}>Steps</div>
+                  <ol className="recipe-step-list">
+                    {activeRecipe.steps.map((step, i) => <li key={i}>{step}</li>)}
+                  </ol>
+                </div>
+              )}
+              {activeRecipe.notes && (
+                <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5 }}>{activeRecipe.notes}</p>
+              )}
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-danger btn-sm" onClick={() => setSheet('delete-confirm')}>Delete</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setSheet('none')}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirm sheet ───────────────────────────────────────────── */}
+      {sheet === 'delete-confirm' && activeRecipe && (
+        <div className="sheet-overlay" onClick={() => setSheet('detail')}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">Delete Recipe?</span>
+            </div>
+            <div className="sheet-body">
+              <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.6 }}>
+                "{activeRecipe.name}" will be permanently removed from your recipe library.
+              </p>
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setSheet('detail')}>Cancel</button>
+              <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

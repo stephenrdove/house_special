@@ -600,6 +600,32 @@ textarea.input {
 }
 .toggle input:checked + .toggle-track::after { transform: translateX(18px); }
 
+/* ── RECIPES ────────────────────────────────────────────────────────────── */
+.recipe-ingredient-list {
+  margin: 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.recipe-step-list {
+  margin: 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.recipe-source-link {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
 /* ── TAG INPUT ──────────────────────────────────────────────────────────── */
 .tag-input {
   display: flex;

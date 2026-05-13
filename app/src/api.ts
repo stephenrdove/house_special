@@ -1,4 +1,4 @@
-import type { AppState, FamilyConstraints, FamilyMember, GroceryItem, User } from './types';
+import type { AppState, ExtractedRecipe, FamilyConstraints, FamilyMember, GroceryItem, Recipe, User } from './types';
 
 const BASE = import.meta.env.VITE_WORKER_URL as string;
 
@@ -34,5 +34,9 @@ export const api = {
   leaveFamily:      ()                                => req<{ ok: boolean }>('/families/me', { method: 'DELETE' }),
   updateConstraints: (constraints: FamilyConstraints) => req<{ ok: boolean }>('/families/constraints', { method: 'PUT', body: JSON.stringify({ constraints }) }),
   generatePlan:     (startDate: string)               => req<{ weeks: { week: number; days: { date: string; meal: string; notes?: string; leftover: boolean }[] }[]; grocery: Pick<GroceryItem, 'name' | 'category' | 'warn'>[] }>('/families/generate', { method: 'POST', body: JSON.stringify({ startDate }) }),
+  listRecipes:   ()                                        => req<Recipe[]>('/families/recipes'),
+  saveRecipe:    (r: Omit<Recipe, 'id' | 'created_at'>)   => req<{ id: string; ok: boolean }>('/families/recipes', { method: 'POST', body: JSON.stringify(r) }),
+  extractRecipe: (body: { url?: string; text?: string })   => req<ExtractedRecipe>('/families/recipes/extract', { method: 'POST', body: JSON.stringify(body) }),
+  deleteRecipe:  (id: string)                              => req<{ ok: boolean }>(`/families/recipes/${id}`, { method: 'DELETE' }),
   loginUrl:      ()                             => `${BASE}/auth/login`,
 };

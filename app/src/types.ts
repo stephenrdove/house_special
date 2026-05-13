@@ -2,6 +2,7 @@ export interface Meal {
   name: string;
   notes: string;
   leftover: boolean;
+  recipe_id?: string;
 }
 
 export interface GroceryItem {
@@ -34,7 +35,27 @@ export interface FamilyMember {
 
 export type SyncStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-export type View = 'calendar' | 'grocery' | 'import' | 'settings';
+export type View = 'calendar' | 'grocery' | 'import' | 'recipes' | 'settings';
+
+export interface Recipe {
+  id: string;
+  name: string;
+  source_url: string | null;
+  ingredients: string[];
+  steps: string[];
+  notes: string;
+  tags: string[];
+  created_at: number;
+}
+
+export interface ExtractedRecipe {
+  name: string;
+  source_url?: string | null;
+  ingredients: string[];
+  steps: string[];
+  notes: string;
+  tags: string[];
+}
 
 export interface FamilyConstraints {
   family: {

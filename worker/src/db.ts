@@ -4,15 +4,15 @@ import type { AppState, GroceryItem, Meal } from './types.ts';
 
 export async function getState(db: D1Database, familyId: string): Promise<AppState> {
   const [mealsRows, groceryRows] = await Promise.all([
-    db.prepare('SELECT date, name, notes, leftover FROM meals WHERE family_id = ?')
-      .bind(familyId).all<{ date: string; name: string; notes: string; leftover: number }>(),
+    db.prepare('SELECT date, name, notes, leftover, recipe_id FROM meals WHERE family_id = ?')
+      .bind(familyId).all<{ date: string; name: string; notes: string; leftover: number; recipe_id: string | null }>(),
     db.prepare('SELECT id, name, category, checked, warn FROM grocery_items WHERE family_id = ? ORDER BY sort_order ASC')
       .bind(familyId).all<{ id: string; name: string; category: string; checked: number; warn: number }>(),
   ]);
 
   const meals: Record<string, Meal> = {};
   for (const row of mealsRows.results) {
-    meals[row.date] = { name: row.name, notes: row.notes, leftover: row.leftover === 1 };
+    meals[row.date] = { name: row.name, notes: row.notes, leftover: row.leftover === 1, recipe_id: row.recipe_id ?? undefined };
   }
 
   const grocery: GroceryItem[] = groceryRows.results.map(row => ({
@@ -32,8 +32,8 @@ export async function putState(db: D1Database, familyId: string, state: AppState
 
   for (const [date, meal] of Object.entries(state.meals)) {
     statements.push(
-      db.prepare('INSERT INTO meals (family_id, date, name, notes, leftover, updated_at) VALUES (?,?,?,?,?,?)')
-        .bind(familyId, date, meal.name, meal.notes || '', meal.leftover ? 1 : 0, now)
+      db.prepare('INSERT INTO meals (family_id, date, name, notes, leftover, recipe_id, updated_at) VALUES (?,?,?,?,?,?,?)')
+        .bind(familyId, date, meal.name, meal.notes || '', meal.leftover ? 1 : 0, meal.recipe_id ?? null, now)
     );
   }
 
@@ -145,6 +145,55 @@ export async function leaveFamily(db: D1Database, userId: string): Promise<void>
   }
 
   await db.batch(statements);
+}
+
+// ─── RECIPES ──────────────────────────────────────────────────────────────────
+
+export interface RecipeRow {
+  id: string;
+  family_id: string;
+  name: string;
+  source_url: string | null;
+  ingredients: string;
+  steps: string;
+  notes: string;
+  tags: string;
+  created_at: number;
+}
+
+export async function listRecipes(db: D1Database, familyId: string): Promise<RecipeRow[]> {
+  const result = await db.prepare(
+    'SELECT * FROM recipes WHERE family_id = ? ORDER BY created_at DESC'
+  ).bind(familyId).all<RecipeRow>();
+  return result.results;
+}
+
+export async function listRecipeNames(db: D1Database, familyId: string): Promise<string[]> {
+  const result = await db.prepare(
+    'SELECT name FROM recipes WHERE family_id = ? ORDER BY created_at DESC'
+  ).bind(familyId).all<{ name: string }>();
+  return result.results.map(r => r.name);
+}
+
+export async function insertRecipe(
+  db: D1Database,
+  familyId: string,
+  recipe: Omit<RecipeRow, 'id' | 'family_id' | 'created_at'>,
+): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.prepare(
+    'INSERT INTO recipes (id, family_id, name, source_url, ingredients, steps, notes, tags, created_at) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).bind(id, familyId, recipe.name, recipe.source_url ?? null, recipe.ingredients, recipe.steps, recipe.notes, recipe.tags, Date.now()).run();
+  return id;
+}
+
+export async function deleteRecipe(
+  db: D1Database, familyId: string, recipeId: string,
+): Promise<boolean> {
+  const result = await db.prepare(
+    'DELETE FROM recipes WHERE id = ? AND family_id = ?'
+  ).bind(recipeId, familyId).run();
+  return result.meta.changes > 0;
 }
 
 export async function acceptInvite(

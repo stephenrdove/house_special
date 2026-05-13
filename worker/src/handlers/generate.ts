@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
-import { getFamilyConstraints, getFamilyId, getState } from '../db.ts';
+import { getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
 
 interface Constraints {
@@ -69,7 +69,7 @@ function getRecentMealHistory(
     .map(([date, meal]) => `${date}: ${meal.name}`);
 }
 
-function buildConstraintsSummary(c: Constraints): string {
+function buildConstraintsSummary(c: Constraints, recipeNames: string[] = []): string {
   const totalEaters = c.family.adults + c.family.children.length;
   const familyParts: string[] = [];
   if (c.family.adults === 1) familyParts.push('1 adult');
@@ -85,8 +85,15 @@ function buildConstraintsSummary(c: Constraints): string {
   if (c.family.children.some(ch => ch.age < 5))
     lines.push('Toddler-friendly required: simple flavors, no spice, soft textures');
   lines.push('Recipes: 30–45 minutes or less on weeknights');
+
+  // Saved recipes are listed first and separately — these are real recipes the family
+  // has stored and should be used with high priority.
+  if (recipeNames.length > 0)
+    lines.push(`\nSaved recipes (use these — the family has them and enjoys making them):\n${recipeNames.map(n => `- ${n}`).join('\n')}`);
+
   if (c.favorites.length > 0)
-    lines.push(`\nGo-to meals (use regularly):\n${c.favorites.map(f => `- ${f}`).join('\n')}`);
+    lines.push(`\nOther go-to meals:\n${c.favorites.map(f => `- ${f}`).join('\n')}`);
+
   if (c.avoid.length > 0)
     lines.push(`\nAvoid: ${c.avoid.join(', ')}`);
   if (c.preferred_cuisines.length > 0)
@@ -95,6 +102,39 @@ function buildConstraintsSummary(c: Constraints): string {
     lines.push(`\nNotes: ${c.notes.trim()}`);
 
   return lines.join('\n');
+}
+
+function significantWords(s: string): Set<string> {
+  return new Set(
+    s.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2),
+  );
+}
+
+function matchRecipe(
+  mealName: string,
+  recipes: { id: string; name: string; tags: string[] }[],
+): string | undefined {
+  const a = mealName.toLowerCase().trim();
+  const mealWords = significantWords(mealName);
+
+  return recipes.find(r => {
+    const b = r.name.toLowerCase().trim();
+
+    // Exact or substring match
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+
+    // Word-level overlap between meal and recipe name or tags
+    const recipeWords = significantWords(r.name);
+    const tagWords = new Set(r.tags.flatMap(t => significantWords(t)));
+
+    for (const word of mealWords) {
+      if (recipeWords.has(word) || tagWords.has(word)) return true;
+    }
+    return false;
+  })?.id;
 }
 
 const SUGGEST_DINNERS_TOOL: Anthropic.Tool = {
@@ -160,10 +200,13 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
   let body: { startDate?: string } = {};
   try { body = await request.json(); } catch { /* no body is fine */ }
 
-  const [constraintsRaw, state] = await Promise.all([
+  const [constraintsRaw, state, recipes] = await Promise.all([
     getFamilyConstraints(env.DB, familyId),
     getState(env.DB, familyId),
+    listRecipes(env.DB, familyId),
   ]);
+
+  const recipeNames = recipes.map(r => r.name);
 
   const constraints: Constraints = constraintsRaw
     ? JSON.parse(constraintsRaw) as Constraints
@@ -172,7 +215,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
   const history = getRecentMealHistory(state.meals);
   const startDate = body.startDate ?? getNextSunday();
   const weekSchedule = buildWeekSchedule(startDate);
-  const constraintsSummary = buildConstraintsSummary(constraints);
+  const constraintsSummary = buildConstraintsSummary(constraints, recipeNames);
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -196,7 +239,19 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
     return json({ error: 'Failed to generate meal plan' }, 500);
   }
 
-  const days = (mealToolUse.input as { days: DayPlan[] }).days;
+  const rawDays = (mealToolUse.input as { days: DayPlan[] }).days;
+
+  // Tag each day with a recipe_id if the meal name matches a saved recipe.
+  const recipesForMatching = recipes.map(r => ({
+    id: r.id,
+    name: r.name,
+    tags: JSON.parse(r.tags) as string[],
+  }));
+
+  const days = rawDays.map(day => {
+    const recipe_id = matchRecipe(day.meal, recipesForMatching);
+    return recipe_id ? { ...day, recipe_id } : day;
+  });
 
   // ── Call 2: build grocery list ─────────────────────────────────────────────
   const allergyNote = constraints.allergies.length > 0

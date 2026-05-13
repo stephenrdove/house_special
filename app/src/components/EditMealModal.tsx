@@ -6,6 +6,7 @@ interface Props {
   meal: Meal | null;
   onSave: (meal: Meal | null) => void;
   onClose: () => void;
+  onViewRecipe?: () => void;
 }
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -16,7 +17,7 @@ function formatDate(key: string): string {
   return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function EditMealModal({ dateKey, meal, onSave, onClose }: Props) {
+export function EditMealModal({ dateKey, meal, onSave, onClose, onViewRecipe }: Props) {
   const [name, setName] = useState(meal?.name ?? '');
   const [notes, setNotes] = useState(meal?.notes ?? '');
   const [leftover, setLeftover] = useState(meal?.leftover ?? false);
@@ -72,6 +73,14 @@ export function EditMealModal({ dateKey, meal, onSave, onClose }: Props) {
               rows={2}
             />
           </div>
+          {meal?.recipe_id && onViewRecipe && (
+            <button className="btn btn-ghost btn-full btn-sm" onClick={onViewRecipe} style={{ justifyContent: 'flex-start', gap: 8 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+              View recipe
+            </button>
+          )}
           <label className="checkbox-row">
             <input
               type="checkbox"

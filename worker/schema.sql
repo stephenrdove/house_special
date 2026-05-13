@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS meals (
   name        TEXT NOT NULL,
   notes       TEXT NOT NULL DEFAULT '',
   leftover    INTEGER NOT NULL DEFAULT 0,
+  recipe_id   TEXT,
   updated_at  INTEGER NOT NULL,
   PRIMARY KEY (family_id, date)
 );
@@ -47,6 +48,20 @@ CREATE TABLE IF NOT EXISTS grocery_items (
   PRIMARY KEY (id, family_id)
 );
 
+CREATE TABLE IF NOT EXISTS recipes (
+  id          TEXT NOT NULL,
+  family_id   TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  source_url  TEXT,
+  ingredients TEXT NOT NULL DEFAULT '[]',
+  steps       TEXT NOT NULL DEFAULT '[]',
+  notes       TEXT NOT NULL DEFAULT '',
+  tags        TEXT NOT NULL DEFAULT '[]',
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (id, family_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_meals_family    ON meals(family_id);
 CREATE INDEX IF NOT EXISTS idx_grocery_family  ON grocery_items(family_id);
 CREATE INDEX IF NOT EXISTS idx_users_family    ON users(family_id);
+CREATE INDEX IF NOT EXISTS idx_recipes_family  ON recipes(family_id);
