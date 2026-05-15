@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
-import { getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
+import { checkAndIncrementGenerations, getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
 
 interface Constraints {
@@ -196,6 +196,11 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
 
   const familyId = await getFamilyId(env.DB, userId);
   if (!familyId) return json({ error: 'No family found' }, 404);
+
+  const rateCheck = await checkAndIncrementGenerations(env.DB, familyId);
+  if (!rateCheck.allowed) {
+    return json({ error: `Daily limit reached (${rateCheck.limit} generations per day). Resets at midnight.`, limit: rateCheck.limit }, 429);
+  }
 
   let body: { startDate?: string } = {};
   try { body = await request.json(); } catch { /* no body is fine */ }

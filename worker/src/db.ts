@@ -147,6 +147,27 @@ export async function leaveFamily(db: D1Database, userId: string): Promise<void>
   await db.batch(statements);
 }
 
+// ─── RATE LIMITING ────────────────────────────────────────────────────────────
+
+const DAILY_GENERATION_LIMIT = 5;
+
+export async function checkAndIncrementGenerations(
+  db: D1Database, familyId: string,
+): Promise<{ allowed: boolean; count: number; limit: number }> {
+  const date = new Date().toISOString().slice(0, 10);
+  const row = await db.prepare(
+    'SELECT count FROM generation_log WHERE family_id = ? AND date = ?'
+  ).bind(familyId, date).first<{ count: number }>();
+  const current = row?.count ?? 0;
+  if (current >= DAILY_GENERATION_LIMIT) {
+    return { allowed: false, count: current, limit: DAILY_GENERATION_LIMIT };
+  }
+  await db.prepare(
+    'INSERT INTO generation_log (family_id, date, count) VALUES (?,?,1) ON CONFLICT(family_id, date) DO UPDATE SET count = count + 1'
+  ).bind(familyId, date).run();
+  return { allowed: true, count: current + 1, limit: DAILY_GENERATION_LIMIT };
+}
+
 // ─── RECIPES ──────────────────────────────────────────────────────────────────
 
 export interface RecipeRow {

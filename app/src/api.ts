@@ -33,7 +33,20 @@ export const api = {
   },
   leaveFamily:      ()                                => req<{ ok: boolean }>('/families/me', { method: 'DELETE' }),
   updateConstraints: (constraints: FamilyConstraints) => req<{ ok: boolean }>('/families/constraints', { method: 'PUT', body: JSON.stringify({ constraints }) }),
-  generatePlan:     (startDate: string)               => req<{ weeks: { week: number; days: { date: string; meal: string; notes?: string; leftover: boolean }[] }[]; grocery: Pick<GroceryItem, 'name' | 'category' | 'warn'>[] }>('/families/generate', { method: 'POST', body: JSON.stringify({ startDate }) }),
+  generatePlan:     async (startDate: string) => {
+    const res = await fetch(`${BASE}/families/generate`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate }),
+    });
+    if (res.status === 429) {
+      const body = await res.json() as { error: string };
+      throw Object.assign(new Error(body.error), { rateLimited: true });
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json() as Promise<{ weeks: { week: number; days: { date: string; meal: string; notes?: string; leftover: boolean }[] }[]; grocery: Pick<GroceryItem, 'name' | 'category' | 'warn'>[] }>;
+  },
   listRecipes:   ()                                        => req<Recipe[]>('/families/recipes'),
   saveRecipe:    (r: Omit<Recipe, 'id' | 'created_at'>)   => req<{ id: string; ok: boolean }>('/families/recipes', { method: 'POST', body: JSON.stringify(r) }),
   extractRecipe: (body: { url?: string; text?: string })   => req<ExtractedRecipe>('/families/recipes/extract', { method: 'POST', body: JSON.stringify(body) }),

@@ -53,8 +53,9 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
     try {
       const data = await api.generatePlan(startDate);
       importData(data);
-    } catch {
-      setGenerateError('Generation failed. Check your connection and try again.');
+    } catch (e: unknown) {
+      const err = e as { rateLimited?: boolean; message?: string };
+      setGenerateError(err.rateLimited ? err.message ?? 'Daily limit reached.' : 'Generation failed. Check your connection and try again.');
     } finally {
       setGenerating(false);
     }
