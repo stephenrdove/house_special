@@ -16,6 +16,7 @@ export interface User {
 }
 
 export interface Meal {
+  id: string;
   name: string;
   notes: string;
   leftover: boolean;
@@ -28,6 +29,7 @@ export interface GroceryItem {
   category: string;
   checked: boolean;
   warn: boolean;
+  source_meal_ids: string[];
 }
 
 export interface AppState {

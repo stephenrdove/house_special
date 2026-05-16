@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { api } from '../api';
 import { EditMealModal } from './EditMealModal';
 import type { AppState, Recipe } from '../types';
 
 interface Props {
   state: AppState;
   mutate: (updater: (prev: AppState) => AppState) => void;
+  recipes: Recipe[];
 }
 
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -29,18 +29,15 @@ function formatWeekLabel(start: Date): string {
   return `${MONTHS_SHORT[start.getMonth()]} ${start.getDate()} – ${MONTHS_SHORT[end.getMonth()]} ${end.getDate()}`;
 }
 
-export function CalendarView({ state, mutate }: Props) {
+export function CalendarView({ state, mutate, recipes }: Props) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [recipeSheet, setRecipeSheet] = useState<Recipe | null>(null);
 
-  async function openRecipe(recipeId: string, e?: React.MouseEvent) {
+  function openRecipe(recipeId: string, e?: React.MouseEvent) {
     e?.stopPropagation();
-    try {
-      const all = await api.listRecipes();
-      const recipe = all.find(r => r.id === recipeId);
-      if (recipe) setRecipeSheet(recipe);
-    } catch { /* ignore */ }
+    const recipe = recipes.find(r => r.id === recipeId);
+    if (recipe) setRecipeSheet(recipe);
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -50,16 +47,6 @@ export function CalendarView({ state, mutate }: Props) {
     d.setDate(weekStart.getDate() + i);
     return d;
   });
-
-  function handleSave(key: string, meal: { name: string; notes: string; leftover: boolean } | null) {
-    mutate(prev => {
-      const next = { ...prev, meals: { ...prev.meals } };
-      if (meal) next.meals[key] = meal;
-      else delete next.meals[key];
-      return next;
-    });
-    setEditingKey(null);
-  }
 
   const editingMeal = editingKey ? (state.meals[editingKey] ?? null) : null;
 
@@ -128,12 +115,10 @@ export function CalendarView({ state, mutate }: Props) {
         <EditMealModal
           dateKey={editingKey}
           meal={editingMeal}
-          onSave={meal => handleSave(editingKey, meal)}
+          recipes={recipes}
+          state={state}
+          mutate={mutate}
           onClose={() => setEditingKey(null)}
-          onViewRecipe={editingMeal?.recipe_id ? () => {
-            setEditingKey(null);
-            openRecipe(editingMeal.recipe_id!);
-          } : undefined}
         />
       )}
 
@@ -158,7 +143,7 @@ export function CalendarView({ state, mutate }: Props) {
               <div>
                 <div className="section-label" style={{ padding: '0 0 8px' }}>Ingredients</div>
                 <ul className="recipe-ingredient-list">
-                  {recipeSheet.ingredients.map((ing, i) => <li key={i}>{ing}</li>)}
+                  {recipeSheet.ingredients.map((ing, i) => <li key={i}>{ing.name}</li>)}
                 </ul>
               </div>
               {recipeSheet.steps.length > 0 && (

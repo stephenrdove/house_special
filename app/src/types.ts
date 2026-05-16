@@ -1,4 +1,5 @@
 export interface Meal {
+  id: string;
   name: string;
   notes: string;
   leftover: boolean;
@@ -11,6 +12,12 @@ export interface GroceryItem {
   category: string;
   checked: boolean;
   warn: boolean;
+  source_meal_ids: string[];
+}
+
+export interface RecipeIngredient {
+  name: string;
+  category: string;
 }
 
 export interface AppState {
@@ -41,7 +48,7 @@ export interface Recipe {
   id: string;
   name: string;
   source_url: string | null;
-  ingredients: string[];
+  ingredients: RecipeIngredient[];
   steps: string[];
   notes: string;
   tags: string[];
@@ -51,7 +58,7 @@ export interface Recipe {
 export interface ExtractedRecipe {
   name: string;
   source_url?: string | null;
-  ingredients: string[];
+  ingredients: RecipeIngredient[];
   steps: string[];
   notes: string;
   tags: string[];

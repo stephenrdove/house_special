@@ -67,7 +67,7 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
     setTimeout(() => setCopyLabel('Copy prompt'), 2500);
   }
 
-  function importData(data: { weeks: { week: number; days: { date: string; meal: string; notes?: string; leftover: boolean; recipe_id?: string }[] }[]; grocery: { name: string; category: string; warn: boolean }[] }) {
+  function importData(data: { weeks: { week: number; days: { id?: string; date: string; meal: string; notes?: string; leftover: boolean; recipe_id?: string }[] }[]; grocery: { name: string; category: string; warn: boolean; source_meal_ids?: string[] }[] }) {
     let meals = 0, groceries = 0;
 
     mutate(prev => {
@@ -77,7 +77,7 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
         for (const week of data.weeks) {
           for (const day of week.days ?? []) {
             if (day.date && day.meal) {
-              next.meals[day.date] = { name: day.meal, notes: day.notes ?? '', leftover: !!day.leftover, recipe_id: day.recipe_id };
+              next.meals[day.date] = { id: day.id || crypto.randomUUID(), name: day.meal, notes: day.notes ?? '', leftover: !!day.leftover, recipe_id: day.recipe_id };
               meals++;
             }
           }
@@ -93,6 +93,7 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
               category: item.category,
               checked: false,
               warn: !!item.warn,
+              source_meal_ids: item.source_meal_ids || [],
             };
             next.grocery.push(gi);
             groceries++;

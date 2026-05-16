@@ -6,7 +6,8 @@
       "Bash(nvm --version)",
       "Bash(volta --version)",
       "Bash(fnm --version)",
-      "Bash(curl -s \"https://api.github.com/repos/actions/setup-node/releases/latest\")"
+      "Bash(curl -s \"https://api.github.com/repos/actions/setup-node/releases/latest\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

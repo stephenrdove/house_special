@@ -9,7 +9,7 @@ import { SettingsView } from './components/SettingsView';
 import { SyncIndicator } from './components/SyncIndicator';
 import { useAuth } from './hooks/useAuth';
 import { useAppState } from './hooks/useAppState';
-import type { View } from './types';
+import type { Recipe, View } from './types';
 import './styles.css';
 
 function CalIcon({ active }: { active: boolean }) {
@@ -52,10 +52,10 @@ function SettingsIcon() {
   );
 }
 
-const VIEW_TITLES: Record<View, string> = {
-  calendar: 'House Special',
+const VIEW_LABELS: Record<View, string> = {
+  calendar: 'Calendar',
   grocery: 'Groceries',
-  import: 'Import',
+  import: 'Generate',
   recipes: 'Recipes',
   settings: 'Settings',
 };
@@ -64,6 +64,12 @@ export default function App() {
   const { auth, login, logout } = useAuth();
   const { state, mutate, sync } = useAppState(auth.status === 'authed');
   const [view, setView] = useState<View>('calendar');
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+
+  useEffect(() => {
+    if (auth.status !== 'authed') return;
+    api.listRecipes().then(setRecipes).catch(() => {});
+  }, [auth.status]);
   const [darkMode, setDarkMode] = useState(() => {
     const stored = localStorage.getItem('hs_theme');
     if (stored) return stored === 'dark';
@@ -125,7 +131,12 @@ export default function App() {
       )}
       <div className="app-shell">
         <header className="app-header">
-          <span className="app-header-title">{VIEW_TITLES[view]}</span>
+          <span className="app-header-title">
+            House Special
+            <span style={{ fontWeight: 400, fontSize: 13, color: 'var(--text2)', marginLeft: 8 }}>
+              {VIEW_LABELS[view]}
+            </span>
+          </span>
           <div className="app-header-actions">
             <button className="icon-btn" onClick={() => setDarkMode(d => !d)} title="Toggle theme">
               {darkMode ? '☀️' : '🌙'}
@@ -134,9 +145,9 @@ export default function App() {
         </header>
 
         <main className="main-content">
-          {view === 'calendar' && <CalendarView state={state} mutate={mutate} />}
+          {view === 'calendar' && <CalendarView state={state} mutate={mutate} recipes={recipes} />}
           {view === 'grocery' && <GroceryView state={state} mutate={mutate} />}
-          {view === 'recipes' && <RecipesView />}
+          {view === 'recipes' && <RecipesView recipes={recipes} setRecipes={setRecipes} />}
           {view === 'import' && (
             <ImportView
               state={state}

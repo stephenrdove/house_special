@@ -14,16 +14,19 @@ interface Constraints {
 }
 
 interface DayPlan {
+  id: string;
   date: string;
   meal: string;
   notes?: string;
   leftover: boolean;
+  recipe_id?: string;
 }
 
 interface GroceryItem {
   name: string;
   category: string;
   warn: boolean;
+  meal_ids: string[];
 }
 
 const DEFAULT_CONSTRAINTS: Constraints = {
@@ -128,7 +131,7 @@ function matchRecipe(
 
     // Word-level overlap between meal and recipe name or tags
     const recipeWords = significantWords(r.name);
-    const tagWords = new Set(r.tags.flatMap(t => significantWords(t)));
+    const tagWords = new Set(r.tags.flatMap(t => [...significantWords(t)]));
 
     for (const word of mealWords) {
       if (recipeWords.has(word) || tagWords.has(word)) return true;
@@ -181,8 +184,13 @@ const BUILD_GROCERY_TOOL: Anthropic.Tool = {
               enum: ['Produce', 'Meat & Seafood', 'Dairy & Eggs', 'Frozen', 'Pantry / Dry Goods', 'Canned Goods', 'Condiments & Sauces', 'Other'],
             },
             warn: { type: 'boolean', description: 'true if this item needs a certified allergy-safe version' },
+            meal_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'IDs of the meals in this plan that require this ingredient',
+            },
           },
-          required: ['name', 'category', 'warn'],
+          required: ['name', 'category', 'warn', 'meal_ids'],
         },
       },
     },
@@ -244,18 +252,19 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
     return json({ error: 'Failed to generate meal plan' }, 500);
   }
 
-  const rawDays = (mealToolUse.input as { days: DayPlan[] }).days;
+  const rawDays = (mealToolUse.input as { days: Omit<DayPlan, 'id' | 'recipe_id'>[] }).days;
 
-  // Tag each day with a recipe_id if the meal name matches a saved recipe.
+  // Assign stable IDs and match saved recipes.
   const recipesForMatching = recipes.map(r => ({
     id: r.id,
     name: r.name,
     tags: JSON.parse(r.tags) as string[],
   }));
 
-  const days = rawDays.map(day => {
+  const days: DayPlan[] = rawDays.map(day => {
+    const id = crypto.randomUUID();
     const recipe_id = matchRecipe(day.meal, recipesForMatching);
-    return recipe_id ? { ...day, recipe_id } : day;
+    return recipe_id ? { ...day, id, recipe_id } : { ...day, id };
   });
 
   // ── Call 2: build grocery list ─────────────────────────────────────────────
@@ -272,7 +281,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
     messages: [
       {
         role: 'user',
-        content: `Generate a complete grocery list for this 14-day meal plan:\n\n${JSON.stringify(days, null, 2)}\n\nInclude all ingredients needed. Deduplicate items. Call the build_grocery_list tool.`,
+        content: `Generate a complete grocery list for this meal plan:\n\n${JSON.stringify(days, null, 2)}\n\nInclude all ingredients needed. Deduplicate items across meals (e.g. olive oil used in 3 meals = one entry). For each item, set meal_ids to the array of meal IDs that require it. Call the build_grocery_list tool.`,
       },
     ],
   });
@@ -286,7 +295,12 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
 
   return json({
     weeks: [{ week: 1, days }],
-    grocery: groceryItems,
+    grocery: groceryItems.map(item => ({
+      name: item.name,
+      category: item.category,
+      warn: item.warn,
+      source_meal_ids: item.meal_ids || [],
+    })),
   });
 }
 

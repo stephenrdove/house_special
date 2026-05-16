@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../api';
-import type { ExtractedRecipe, Recipe } from '../types';
+import type { ExtractedRecipe, Recipe, RecipeIngredient } from '../types';
 
 type Sheet = 'none' | 'add' | 'preview' | 'detail' | 'delete-confirm';
 
@@ -31,9 +31,12 @@ function RecipeCard({ recipe, onClick }: { recipe: Recipe; onClick: () => void }
   );
 }
 
-export function RecipesView() {
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
+interface Props {
+  recipes: Recipe[];
+  setRecipes: (fn: (prev: Recipe[]) => Recipe[]) => void;
+}
+
+export function RecipesView({ recipes, setRecipes }: Props) {
   const [sheet, setSheet] = useState<Sheet>('none');
 
   // Add sheet state
@@ -47,6 +50,7 @@ export function RecipesView() {
   const [previewName, setPreviewName] = useState('');
   const [previewSourceUrl, setPreviewSourceUrl] = useState('');
   const [previewIngredients, setPreviewIngredients] = useState('');
+  const [previewExtractedIngredients, setPreviewExtractedIngredients] = useState<RecipeIngredient[]>([]);
   const [previewSteps, setPreviewSteps] = useState('');
   const [previewNotes, setPreviewNotes] = useState('');
   const [previewTags, setPreviewTags] = useState('');
@@ -55,13 +59,6 @@ export function RecipesView() {
   // Detail / delete state
   const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    api.listRecipes()
-      .then(setRecipes)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
 
   function openDetail(recipe: Recipe) {
     setActiveRecipe(recipe);
@@ -78,7 +75,8 @@ export function RecipesView() {
   function populatePreview(extracted: ExtractedRecipe) {
     setPreviewName(extracted.name);
     setPreviewSourceUrl(extracted.source_url ?? '');
-    setPreviewIngredients(extracted.ingredients.join('\n'));
+    setPreviewExtractedIngredients(extracted.ingredients);
+    setPreviewIngredients(extracted.ingredients.map(i => i.name).join('\n'));
     setPreviewSteps(extracted.steps.join('\n'));
     setPreviewNotes(extracted.notes ?? '');
     setPreviewTags(extracted.tags.join(', '));
@@ -103,10 +101,15 @@ export function RecipesView() {
   async function handleSave() {
     setSaving(true);
     try {
+      const lines = previewIngredients.split('\n').map(s => s.trim()).filter(Boolean);
+      const ingredients = lines.map((name, i) => ({
+        name,
+        category: previewExtractedIngredients[i]?.category ?? 'Other',
+      }));
       const recipe = {
         name: previewName.trim(),
         source_url: previewSourceUrl.trim() || null,
-        ingredients: previewIngredients.split('\n').map(s => s.trim()).filter(Boolean),
+        ingredients,
         steps: previewSteps.split('\n').map(s => s.trim()).filter(Boolean),
         notes: previewNotes.trim(),
         tags: previewTags.split(',').map(s => s.trim()).filter(Boolean),
@@ -127,7 +130,7 @@ export function RecipesView() {
     setDeleting(true);
     try {
       await api.deleteRecipe(activeRecipe.id);
-      setRecipes(prev => prev.filter(r => r.id !== activeRecipe.id));
+      setRecipes((prev: Recipe[]) => prev.filter(r => r.id !== activeRecipe.id));
       setSheet('none');
       setActiveRecipe(null);
     } catch {
@@ -144,11 +147,7 @@ export function RecipesView() {
         <button className="btn btn-primary btn-sm" onClick={() => setSheet('add')}>+ Add</button>
       </div>
 
-      {loading && (
-        <p style={{ color: 'var(--text2)', fontSize: 14, textAlign: 'center', marginTop: 40 }}>Loading…</p>
-      )}
-
-      {!loading && recipes.length === 0 && (
+      {recipes.length === 0 && (
         <div style={{ textAlign: 'center', marginTop: 60, color: 'var(--text2)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📖</div>
           <p style={{ fontSize: 14 }}>No recipes yet.</p>
@@ -156,7 +155,7 @@ export function RecipesView() {
         </div>
       )}
 
-      {!loading && recipes.length > 0 && (
+      {recipes.length > 0 && (
         <div className="stack">
           {recipes.map(recipe => (
             <RecipeCard key={recipe.id} recipe={recipe} onClick={() => openDetail(recipe)} />
@@ -310,7 +309,7 @@ export function RecipesView() {
               <div>
                 <div className="section-label" style={{ padding: '0 0 8px' }}>Ingredients</div>
                 <ul className="recipe-ingredient-list">
-                  {activeRecipe.ingredients.map((ing, i) => <li key={i}>{ing}</li>)}
+                  {activeRecipe.ingredients.map((ing, i) => <li key={i}>{ing.name}</li>)}
                 </ul>
               </div>
               {activeRecipe.steps.length > 0 && (

@@ -37,12 +37,12 @@ ANTHROPIC_API_KEY=...
 
 **Frontend:** Auto-deploys on merge to `main` via Cloudflare Pages. No manual step needed.
 
-**Worker:** Must deploy manually after any worker change:
+**Worker:** Auto-deploys via GitHub Actions (`.github/workflows/deploy-worker.yml`) when `worker/` files are merged to `main`. Can also trigger manually from the GitHub Actions tab. To deploy locally:
 ```bash
 cd worker
 npx wrangler deploy
 ```
-Requires `CLOUDFLARE_API_TOKEN` env var (or wrangler login). The token needs **Account > D1 > Edit** permission in addition to the default Workers edit permissions.
+Requires `CLOUDFLARE_API_TOKEN` env var. The token needs **Account > D1 > Edit** permission in addition to the default Workers edit permissions. The same token is stored as a GitHub repo secret for CI.
 
 ## Database (D1)
 
@@ -79,6 +79,13 @@ Skip individual migration files when resetting locally — `schema.sql` already 
 - Recipe extraction uses `claude-haiku-4-5-20251001` (cheaper, fast, pure extraction task).
 - Recipe-to-meal linking runs as post-processing after `suggest_dinners` returns — word-level intersection matching between meal name and recipe name/tags.
 
+**Data model notes:**
+- Each `Meal` has a stable UUID `id` (separate from the `(family_id, date)` DB primary key). This allows future drag-and-swap without breaking grocery links.
+- Each `GroceryItem` has `source_meal_ids: string[]` — the IDs of meals that added it. Empty array = ad hoc (never auto-removed). Removing a meal removes or unlinks its grocery items.
+- `build_grocery_list` returns `meal_ids` per item so the LLM attributes groceries to specific meals in one pass — no per-meal API calls needed.
+- Recipe `ingredients` are stored as `{ name: string; category: string }[]`, not plain strings. Backward compat: old plain-string ingredients are normalized to `{ name, category: 'Other' }` on read.
+- Grocery auto-categorization: `app/src/utils/categorize.ts` — checks existing grocery list first (inherit category), then a ~200-entry keyword dictionary, then defaults to 'Other'.
+
 ## Key files
 
 | File | Purpose |
@@ -90,7 +97,9 @@ Skip individual migration files when resetting locally — `schema.sql` already 
 | `worker/schema.sql` | Authoritative DB schema |
 | `app/src/types.ts` | Shared TypeScript types |
 | `app/src/api.ts` | All frontend API calls |
-| `app/src/App.tsx` | Root component, nav, view routing |
+| `app/src/App.tsx` | Root component, nav, view routing, recipe state |
+| `app/src/components/EditMealModal.tsx` | Meal edit — recipe linking, grocery CRUD, delete cleanup |
+| `app/src/utils/categorize.ts` | Grocery category auto-detection (keyword dictionary) |
 | `app/src/styles.css` | All styles (single file) |
 
 ## UI conventions

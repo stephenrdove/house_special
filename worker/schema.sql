@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS family_invites (
 );
 
 CREATE TABLE IF NOT EXISTS meals (
+  id          TEXT NOT NULL DEFAULT '',
   family_id   TEXT NOT NULL,
   date        TEXT NOT NULL,
   name        TEXT NOT NULL,
@@ -36,15 +37,18 @@ CREATE TABLE IF NOT EXISTS meals (
   PRIMARY KEY (family_id, date)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meals_id ON meals(id);
+
 CREATE TABLE IF NOT EXISTS grocery_items (
-  id          TEXT NOT NULL,
-  family_id   TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  category    TEXT NOT NULL,
-  checked     INTEGER NOT NULL DEFAULT 0,
-  warn        INTEGER NOT NULL DEFAULT 0,
-  sort_order  INTEGER NOT NULL DEFAULT 0,
-  updated_at  INTEGER NOT NULL,
+  id              TEXT NOT NULL,
+  family_id       TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  category        TEXT NOT NULL,
+  checked         INTEGER NOT NULL DEFAULT 0,
+  warn            INTEGER NOT NULL DEFAULT 0,
+  source_meal_ids TEXT NOT NULL DEFAULT '[]',
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  updated_at      INTEGER NOT NULL,
   PRIMARY KEY (id, family_id)
 );
 

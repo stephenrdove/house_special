@@ -19,8 +19,18 @@ const EXTRACT_RECIPE_TOOL: Anthropic.Tool = {
       name: { type: 'string', description: 'Recipe name, concise (3–7 words)' },
       ingredients: {
         type: 'array',
-        description: 'Ingredients with quantities, one per item',
-        items: { type: 'string' },
+        description: 'Ingredients with quantities and grocery category, one per item',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Ingredient with quantity, e.g. "2 cups broccoli florets"' },
+            category: {
+              type: 'string',
+              enum: ['Produce', 'Meat & Seafood', 'Dairy & Eggs', 'Frozen', 'Pantry / Dry Goods', 'Canned Goods', 'Condiments & Sauces', 'Other'],
+            },
+          },
+          required: ['name', 'category'],
+        },
       },
       steps: {
         type: 'array',
@@ -93,7 +103,7 @@ export async function handleExtractRecipe(request: Request, env: Env): Promise<R
 
   const extracted = toolUse.input as {
     name: string;
-    ingredients: string[];
+    ingredients: { name: string; category: string }[];
     steps: string[];
     notes: string;
     tags: string[];
@@ -112,7 +122,7 @@ export async function handleSaveRecipe(request: Request, env: Env): Promise<Resp
   let body: {
     name?: string;
     source_url?: string | null;
-    ingredients?: string[];
+    ingredients?: (string | { name: string; category: string })[];
     steps?: string[];
     notes?: string;
     tags?: string[];
@@ -121,10 +131,15 @@ export async function handleSaveRecipe(request: Request, env: Env): Promise<Resp
   if (!body.name?.trim()) return json({ error: 'name required' }, 400);
   if (!Array.isArray(body.ingredients) || body.ingredients.length === 0) return json({ error: 'ingredients required' }, 400);
 
+  // Normalise: wrap plain strings from old clients into {name, category} objects
+  const ingredients = body.ingredients.map(i =>
+    typeof i === 'string' ? { name: i, category: 'Other' } : i
+  );
+
   const id = await insertRecipe(env.DB, familyId, {
     name: body.name.trim(),
     source_url: body.source_url ?? null,
-    ingredients: JSON.stringify(body.ingredients ?? []),
+    ingredients: JSON.stringify(ingredients),
     steps: JSON.stringify(body.steps ?? []),
     notes: body.notes ?? '',
     tags: JSON.stringify(body.tags ?? []),
@@ -141,16 +156,19 @@ export async function handleListRecipes(request: Request, env: Env): Promise<Res
   if (!familyId) return json([]);
 
   const rows = await listRecipes(env.DB, familyId);
-  const recipes = rows.map(r => ({
-    id: r.id,
-    name: r.name,
-    source_url: r.source_url,
-    ingredients: JSON.parse(r.ingredients) as string[],
-    steps: JSON.parse(r.steps) as string[],
-    notes: r.notes,
-    tags: JSON.parse(r.tags) as string[],
-    created_at: r.created_at,
-  }));
+  const recipes = rows.map(r => {
+    const rawIngredients = JSON.parse(r.ingredients) as (string | { name: string; category: string })[];
+    return {
+      id: r.id,
+      name: r.name,
+      source_url: r.source_url,
+      ingredients: rawIngredients.map(i => typeof i === 'string' ? { name: i, category: 'Other' } : i),
+      steps: JSON.parse(r.steps) as string[],
+      notes: r.notes,
+      tags: JSON.parse(r.tags) as string[],
+      created_at: r.created_at,
+    };
+  });
 
   return json(recipes);
 }

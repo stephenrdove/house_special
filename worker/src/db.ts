@@ -4,20 +4,21 @@ import type { AppState, GroceryItem, Meal } from './types.ts';
 
 export async function getState(db: D1Database, familyId: string): Promise<AppState> {
   const [mealsRows, groceryRows] = await Promise.all([
-    db.prepare('SELECT date, name, notes, leftover, recipe_id FROM meals WHERE family_id = ?')
-      .bind(familyId).all<{ date: string; name: string; notes: string; leftover: number; recipe_id: string | null }>(),
-    db.prepare('SELECT id, name, category, checked, warn FROM grocery_items WHERE family_id = ? ORDER BY sort_order ASC')
-      .bind(familyId).all<{ id: string; name: string; category: string; checked: number; warn: number }>(),
+    db.prepare('SELECT id, date, name, notes, leftover, recipe_id FROM meals WHERE family_id = ?')
+      .bind(familyId).all<{ id: string; date: string; name: string; notes: string; leftover: number; recipe_id: string | null }>(),
+    db.prepare('SELECT id, name, category, checked, warn, source_meal_ids FROM grocery_items WHERE family_id = ? ORDER BY sort_order ASC')
+      .bind(familyId).all<{ id: string; name: string; category: string; checked: number; warn: number; source_meal_ids: string }>(),
   ]);
 
   const meals: Record<string, Meal> = {};
   for (const row of mealsRows.results) {
-    meals[row.date] = { name: row.name, notes: row.notes, leftover: row.leftover === 1, recipe_id: row.recipe_id ?? undefined };
+    meals[row.date] = { id: row.id, name: row.name, notes: row.notes, leftover: row.leftover === 1, recipe_id: row.recipe_id ?? undefined };
   }
 
   const grocery: GroceryItem[] = groceryRows.results.map(row => ({
     id: row.id, name: row.name, category: row.category,
     checked: row.checked === 1, warn: row.warn === 1,
+    source_meal_ids: JSON.parse(row.source_meal_ids || '[]') as string[],
   }));
 
   return { meals, grocery };
@@ -32,15 +33,15 @@ export async function putState(db: D1Database, familyId: string, state: AppState
 
   for (const [date, meal] of Object.entries(state.meals)) {
     statements.push(
-      db.prepare('INSERT INTO meals (family_id, date, name, notes, leftover, recipe_id, updated_at) VALUES (?,?,?,?,?,?,?)')
-        .bind(familyId, date, meal.name, meal.notes || '', meal.leftover ? 1 : 0, meal.recipe_id ?? null, now)
+      db.prepare('INSERT INTO meals (id, family_id, date, name, notes, leftover, recipe_id, updated_at) VALUES (?,?,?,?,?,?,?,?)')
+        .bind(meal.id || crypto.randomUUID(), familyId, date, meal.name, meal.notes || '', meal.leftover ? 1 : 0, meal.recipe_id ?? null, now)
     );
   }
 
   state.grocery.forEach((item, i) => {
     statements.push(
-      db.prepare('INSERT INTO grocery_items (id, family_id, name, category, checked, warn, sort_order, updated_at) VALUES (?,?,?,?,?,?,?,?)')
-        .bind(item.id, familyId, item.name, item.category, item.checked ? 1 : 0, item.warn ? 1 : 0, i, now)
+      db.prepare('INSERT INTO grocery_items (id, family_id, name, category, checked, warn, source_meal_ids, sort_order, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        .bind(item.id, familyId, item.name, item.category, item.checked ? 1 : 0, item.warn ? 1 : 0, JSON.stringify(item.source_meal_ids || []), i, now)
     );
   });
 
