@@ -49,7 +49,7 @@ export const api = {
   },
   listRecipes:   ()                                        => req<Recipe[]>('/families/recipes'),
   saveRecipe:    (r: Omit<Recipe, 'id' | 'created_at'>)   => req<{ id: string; ok: boolean }>('/families/recipes', { method: 'POST', body: JSON.stringify(r) }),
-  extractRecipe: (body: { url?: string; text?: string })   => req<ExtractedRecipe>('/families/recipes/extract', { method: 'POST', body: JSON.stringify(body) }),
+  extractRecipe: (body: { url?: string; text?: string; file?: string }) => req<ExtractedRecipe>('/families/recipes/extract', { method: 'POST', body: JSON.stringify(body) }),
   deleteRecipe:  (id: string)                              => req<{ ok: boolean }>(`/families/recipes/${id}`, { method: 'DELETE' }),
   loginUrl:      ()                             => `${BASE}/auth/login`,
 };

@@ -59,41 +59,72 @@ export async function handleExtractRecipe(request: Request, env: Env): Promise<R
   const familyId = await getFamilyId(env.DB, userId);
   if (!familyId) return json({ error: 'No family found' }, 404);
 
-  let body: { url?: string; text?: string };
+  let body: { url?: string; text?: string; file?: string };
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
-  if (!body.url && !body.text) return json({ error: 'url or text required' }, 400);
-
-  let content: string;
-  let sourceUrl: string | undefined;
-
-  if (body.url) {
-    sourceUrl = body.url;
-    let res: Response;
-    try {
-      res = await fetch(body.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HouseSpecial/1.0)' } });
-    } catch {
-      return json({ error: 'Could not fetch that URL. Try pasting the recipe text instead.' }, 502);
-    }
-    if (!res.ok) return json({ error: 'Could not fetch that URL. Try pasting the recipe text instead.' }, 502);
-    const html = await res.text();
-    content = stripHtml(html).slice(0, 30000);
-  } else {
-    content = (body.text ?? '').slice(0, 30000);
-  }
+  if (!body.url && !body.text && !body.file) return json({ error: 'url, text, or file required' }, 400);
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  let sourceUrl: string | undefined;
+  let messages: Anthropic.MessageParam[];
+
+  if (body.file) {
+    const match = body.file.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) return json({ error: 'Invalid file data' }, 400);
+    const [, mimeType, data] = match;
+
+    const VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    let mediaBlock: Anthropic.ImageBlockParam | Anthropic.DocumentBlockParam;
+
+    if (mimeType === 'application/pdf') {
+      mediaBlock = {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data },
+      };
+    } else if (VALID_IMAGE_TYPES.includes(mimeType)) {
+      mediaBlock = {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data,
+        },
+      };
+    } else {
+      return json({ error: 'Unsupported file type. Use JPEG, PNG, WebP, GIF, or PDF.' }, 400);
+    }
+
+    messages = [{
+      role: 'user',
+      content: [mediaBlock, { type: 'text', text: 'Extract the recipe and call the extract_recipe tool.' }],
+    }];
+  } else {
+    let content: string;
+    if (body.url) {
+      sourceUrl = body.url;
+      let res: Response;
+      try {
+        res = await fetch(body.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HouseSpecial/1.0)' } });
+      } catch {
+        return json({ error: 'Could not fetch that URL. Try pasting the recipe text instead.' }, 502);
+      }
+      if (!res.ok) return json({ error: 'Could not fetch that URL. Try pasting the recipe text instead.' }, 502);
+      const html = await res.text();
+      content = stripHtml(html).slice(0, 30000);
+    } else {
+      content = (body.text ?? '').slice(0, 30000);
+    }
+    messages = [{
+      role: 'user',
+      content: `Extract the recipe from this content and call the extract_recipe tool:\n\n${content}`,
+    }];
+  }
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 2048,
     tools: [EXTRACT_RECIPE_TOOL],
     tool_choice: { type: 'tool', name: 'extract_recipe' },
-    messages: [
-      {
-        role: 'user',
-        content: `Extract the recipe from this content and call the extract_recipe tool:\n\n${content}`,
-      },
-    ],
+    messages,
   });
 
   const toolUse = response.content.find(b => b.type === 'tool_use');

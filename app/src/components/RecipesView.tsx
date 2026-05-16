@@ -4,10 +4,21 @@ import type { ExtractedRecipe, Recipe, RecipeIngredient } from '../types';
 
 type Sheet = 'none' | 'add' | 'preview' | 'detail' | 'delete-confirm';
 
+const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
 function CloseIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+      <circle cx="12" cy="13" r="4"/>
     </svg>
   );
 }
@@ -40,9 +51,10 @@ export function RecipesView({ recipes, setRecipes }: Props) {
   const [sheet, setSheet] = useState<Sheet>('none');
 
   // Add sheet state
-  const [inputMode, setInputMode] = useState<'url' | 'text'>('url');
+  const [inputMode, setInputMode] = useState<'url' | 'text' | 'file'>('url');
   const [urlInput, setUrlInput] = useState('');
   const [textInput, setTextInput] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState('');
 
@@ -69,6 +81,7 @@ export function RecipesView({ recipes, setRecipes }: Props) {
     setSheet('none');
     setUrlInput('');
     setTextInput('');
+    setSelectedFile(null);
     setExtractError('');
   }
 
@@ -86,7 +99,21 @@ export function RecipesView({ recipes, setRecipes }: Props) {
     setExtracting(true);
     setExtractError('');
     try {
-      const body = inputMode === 'url' ? { url: urlInput } : { text: textInput };
+      let body: Parameters<typeof api.extractRecipe>[0];
+      if (inputMode === 'url') {
+        body = { url: urlInput };
+      } else if (inputMode === 'text') {
+        body = { text: textInput };
+      } else {
+        if (!selectedFile) throw new Error('No file selected');
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedFile);
+        });
+        body = { file: dataUrl };
+      }
       const extracted = await api.extractRecipe(body);
       populatePreview(extracted);
       setSheet('preview');
@@ -151,7 +178,7 @@ export function RecipesView({ recipes, setRecipes }: Props) {
         <div style={{ textAlign: 'center', marginTop: 60, color: 'var(--text2)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📖</div>
           <p style={{ fontSize: 14 }}>No recipes yet.</p>
-          <p style={{ fontSize: 13, marginTop: 4 }}>Add one from a URL or paste recipe text.</p>
+          <p style={{ fontSize: 13, marginTop: 4 }}>Add one from a URL, paste text, or upload a photo or PDF.</p>
         </div>
       )}
 
@@ -188,9 +215,16 @@ export function RecipesView({ recipes, setRecipes }: Props) {
                 >
                   Paste text
                 </button>
+                <button
+                  className={`btn btn-sm ${inputMode === 'file' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setInputMode('file')}
+                >
+                  Upload
+                </button>
               </div>
 
-              {inputMode === 'url' ? (
+              {inputMode === 'url' && (
                 <div>
                   <label className="field-label">Recipe URL</label>
                   <input
@@ -202,7 +236,8 @@ export function RecipesView({ recipes, setRecipes }: Props) {
                     autoFocus
                   />
                 </div>
-              ) : (
+              )}
+              {inputMode === 'text' && (
                 <div>
                   <label className="field-label">Recipe text</label>
                   <textarea
@@ -213,6 +248,43 @@ export function RecipesView({ recipes, setRecipes }: Props) {
                     placeholder="Paste the recipe here..."
                     autoFocus
                   />
+                </div>
+              )}
+              {inputMode === 'file' && (
+                <div>
+                  <label className="field-label">Photo or PDF</label>
+                  {selectedFile ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="input" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedFile.name}</div>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setSelectedFile(null)}>Clear</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <label style={{ flex: 1, cursor: 'pointer' }}>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          style={{ display: 'none' }}
+                          onChange={e => setSelectedFile(e.target.files?.[0] ?? null)}
+                        />
+                        <div className="btn btn-ghost" style={{ width: '100%', textAlign: 'center' }}>Choose file</div>
+                      </label>
+                      {isMobile && (
+                        <label style={{ flex: 1, cursor: 'pointer' }}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            style={{ display: 'none' }}
+                            onChange={e => setSelectedFile(e.target.files?.[0] ?? null)}
+                          />
+                          <div className="btn btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <CameraIcon /> Take photo
+                          </div>
+                        </label>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -226,7 +298,7 @@ export function RecipesView({ recipes, setRecipes }: Props) {
                 className="btn btn-primary"
                 style={{ flex: 1 }}
                 onClick={handleExtract}
-                disabled={extracting || (inputMode === 'url' ? !urlInput.trim() : !textInput.trim())}
+                disabled={extracting || (inputMode === 'url' ? !urlInput.trim() : inputMode === 'text' ? !textInput.trim() : !selectedFile)}
               >
                 {extracting ? (
                   <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Extracting…</>
