@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
-import type { AppState, Meal, Recipe } from '../types';
+import type { AppState, GroceryItem, Meal, Recipe } from '../types';
 import { categorizeGroceryItem } from '../utils/categorize';
-import { mergeIntoGrocery, removeLinkedGroceryItems, toGroceryName } from '../utils/grocery';
+import { mergeIntoGrocery, removeLinkedGroceryItems } from '../utils/grocery';
 
 interface Props {
   dateKey: string;
