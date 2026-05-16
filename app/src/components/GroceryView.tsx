@@ -89,6 +89,7 @@ export function GroceryView({ state, mutate }: Props) {
       category: newCat,
       checked: false,
       warn: newWarn,
+      source_meal_ids: [],
     };
     mutate(prev => ({ ...prev, grocery: [...prev.grocery, item] }));
     setNewName('');
