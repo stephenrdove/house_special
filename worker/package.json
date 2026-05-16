@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +16,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260504.1",
     "typescript": "^6.0.3",
+    "vitest": "^4.1.6",
     "wrangler": "^4.87.0"
   },
   "dependencies": {

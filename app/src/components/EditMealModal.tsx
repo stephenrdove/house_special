@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
-import type { AppState, GroceryItem, Meal, Recipe, RecipeIngredient } from '../types';
+import type { AppState, Meal, Recipe } from '../types';
 import { categorizeGroceryItem } from '../utils/categorize';
+import { mergeIntoGrocery, removeLinkedGroceryItems, toGroceryName } from '../utils/grocery';
 
 interface Props {
   dateKey: string;
@@ -23,60 +24,6 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 function formatDate(key: string): string {
   const d = new Date(key + 'T12:00:00');
   return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
-}
-
-const MEASUREMENT_RE = /^[\d\s½¼¾⅓⅔⅛⅜⅝⅞.\/,-]+\s*(tablespoons?|teaspoons?|tbsp?|tsp?|cups?|fluid\s+oz|fl\.?\s*oz|ounces?|oz|pounds?|lbs?|grams?|g|kilograms?|kg|milliliters?|ml|liters?|litres?|l|pinches?|dashes?|handfuls?|cloves?|slices?|cans?|packages?|pkgs?|bunches?|heads?|stalks?|sprigs?|strips?|pieces?|pcs?)?\s*(of\s+)?/i;
-
-function toGroceryName(ingredient: string): string {
-  const stripped = ingredient.replace(MEASUREMENT_RE, '').trim();
-  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
-}
-
-function significantWords(s: string): Set<string> {
-  return new Set(
-    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2)
-  );
-}
-
-function nameOverlaps(a: string, b: string): boolean {
-  const wa = significantWords(a);
-  const wb = significantWords(b);
-  for (const w of wa) if (wb.has(w)) return true;
-  return false;
-}
-
-function mergeIntoGrocery(
-  grocery: GroceryItem[],
-  ingredients: RecipeIngredient[],
-  mealId: string,
-): GroceryItem[] {
-  const result = [...grocery];
-  for (const ingredient of ingredients) {
-    const groceryName = toGroceryName(ingredient.name);
-    const exists = result.some(g => nameOverlaps(g.name, groceryName));
-    if (!exists) {
-      result.push({
-        id: `g_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        name: groceryName,
-        category: ingredient.category,
-        checked: false,
-        warn: false,
-        source_meal_ids: [mealId],
-      });
-    }
-  }
-  return result;
-}
-
-function removeLinkedGroceryItems(grocery: GroceryItem[], mealId: string): GroceryItem[] {
-  return grocery
-    .map(item => {
-      if (!item.source_meal_ids.includes(mealId)) return item;
-      const remaining = item.source_meal_ids.filter(id => id !== mealId);
-      if (remaining.length === 0) return null;
-      return { ...item, source_meal_ids: remaining };
-    })
-    .filter((item): item is GroceryItem => item !== null);
 }
 
 type Sheet = 'main' | 'recipe-picker' | 'add-groceries';

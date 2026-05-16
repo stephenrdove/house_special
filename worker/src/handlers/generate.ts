@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
 import { checkAndIncrementGenerations, getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
+import { matchRecipe, significantWords } from '../utils/matching.ts';
 
 interface Constraints {
   family: { adults: number; children: { age: number }[] };
@@ -107,38 +108,6 @@ function buildConstraintsSummary(c: Constraints, recipeNames: string[] = []): st
   return lines.join('\n');
 }
 
-function significantWords(s: string): Set<string> {
-  return new Set(
-    s.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 2),
-  );
-}
-
-function matchRecipe(
-  mealName: string,
-  recipes: { id: string; name: string; tags: string[] }[],
-): string | undefined {
-  const a = mealName.toLowerCase().trim();
-  const mealWords = significantWords(mealName);
-
-  return recipes.find(r => {
-    const b = r.name.toLowerCase().trim();
-
-    // Exact or substring match
-    if (a === b || a.includes(b) || b.includes(a)) return true;
-
-    // Word-level overlap between meal and recipe name or tags
-    const recipeWords = significantWords(r.name);
-    const tagWords = new Set(r.tags.flatMap(t => [...significantWords(t)]));
-
-    for (const word of mealWords) {
-      if (recipeWords.has(word) || tagWords.has(word)) return true;
-    }
-    return false;
-  })?.id;
-}
 
 const SUGGEST_DINNERS_TOOL: Anthropic.Tool = {
   name: 'suggest_dinners',
