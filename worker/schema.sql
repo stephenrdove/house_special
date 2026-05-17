@@ -72,7 +72,9 @@ CREATE TABLE IF NOT EXISTS generation_log (
   PRIMARY KEY (family_id, date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_meals_family    ON meals(family_id);
-CREATE INDEX IF NOT EXISTS idx_grocery_family  ON grocery_items(family_id);
-CREATE INDEX IF NOT EXISTS idx_users_family    ON users(family_id);
-CREATE INDEX IF NOT EXISTS idx_recipes_family  ON recipes(family_id);
+CREATE INDEX IF NOT EXISTS idx_meals_family           ON meals(family_id);
+CREATE INDEX IF NOT EXISTS idx_grocery_family         ON grocery_items(family_id);
+CREATE INDEX IF NOT EXISTS idx_users_family           ON users(family_id);
+CREATE INDEX IF NOT EXISTS idx_recipes_family         ON recipes(family_id);
+CREATE INDEX IF NOT EXISTS idx_family_invites_family  ON family_invites(family_id);
+CREATE INDEX IF NOT EXISTS idx_generation_log_family  ON generation_log(family_id);

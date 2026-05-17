@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { buildPlanningPrompt, getNextSunday } from '../utils/planningPrompt';
 import type { AppState, FamilyConstraints, GroceryItem } from '../types';
+import { dateKey } from '../utils/date';
+import { removeLinkedGroceryItems } from '../utils/grocery';
 
 interface Props {
   state: AppState;
@@ -31,8 +33,7 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
     for (let i = 0; i < 7; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
-      if (state.meals[key]?.name) count++;
+      if (state.meals[dateKey(d)]?.name) count++;
     }
     return count;
   }
@@ -54,21 +55,28 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
       const data = await api.generatePlan(startDate);
       importData(data);
     } catch (e: unknown) {
-      const err = e as { rateLimited?: boolean; message?: string };
-      setGenerateError(err.rateLimited ? err.message ?? 'Daily limit reached.' : 'Generation failed. Check your connection and try again.');
+      if (e instanceof ApiError && e.rateLimited) {
+        setGenerateError(e.message || 'Daily limit reached.');
+      } else {
+        setGenerateError('Generation failed. Check your connection and try again.');
+      }
     } finally {
       setGenerating(false);
     }
   }
 
   async function copyPrompt() {
-    await navigator.clipboard.writeText(buildPlanningPrompt(state, constraints, startDate));
-    setCopyLabel('Copied!');
+    try {
+      await navigator.clipboard.writeText(buildPlanningPrompt(state, constraints, startDate));
+      setCopyLabel('Copied!');
+    } catch {
+      setCopyLabel('Copy failed');
+    }
     setTimeout(() => setCopyLabel('Copy prompt'), 2500);
   }
 
   function importData(data: { weeks: { week: number; days: { id?: string; date: string; meal: string; notes?: string; leftover: boolean; recipe_id?: string }[] }[]; grocery: { name: string; category: string; warn: boolean; source_meal_ids?: string[] }[] }) {
-    let meals = 0, groceries = 0;
+    let added = 0, replaced = 0, groceries = 0;
 
     mutate(prev => {
       const next = { ...prev, meals: { ...prev.meals }, grocery: [...prev.grocery] };
@@ -77,8 +85,16 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
         for (const week of data.weeks) {
           for (const day of week.days ?? []) {
             if (day.date && day.meal) {
+              // Before overwriting, cascade-remove grocery links for the old meal
+              // so they don't remain orphaned with a stale source_meal_ids entry.
+              const oldMeal = next.meals[day.date];
+              if (oldMeal?.id) {
+                next.grocery = removeLinkedGroceryItems(next.grocery, oldMeal.id);
+                replaced++;
+              } else {
+                added++;
+              }
               next.meals[day.date] = { id: day.id || crypto.randomUUID(), name: day.meal, notes: day.notes ?? '', leftover: !!day.leftover, recipe_id: day.recipe_id };
-              meals++;
             }
           }
         }
@@ -104,15 +120,19 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
       return next;
     });
 
+    const meals = added + replaced;
     if (meals > 0) setTimeout(onImportSuccess, 1200);
-    return { meals, groceries };
+    return { meals, added, replaced, groceries };
   }
 
   function importJSON() {
     try {
       const data = JSON.parse(json);
-      const { meals, groceries } = importData(data);
-      setPasteStatus({ type: 'ok', msg: `Imported ${meals} meals and ${groceries} grocery items` });
+      const { added, replaced, groceries } = importData(data);
+      const mealMsg = replaced > 0
+        ? `Added ${added} meal${added !== 1 ? 's' : ''}, replaced ${replaced}`
+        : `Imported ${added} meal${added !== 1 ? 's' : ''}`;
+      setPasteStatus({ type: 'ok', msg: `${mealMsg} and ${groceries} grocery item${groceries !== 1 ? 's' : ''}` });
       setJson('');
     } catch (e) {
       setPasteStatus({ type: 'err', msg: `Invalid JSON — ${(e as Error).message}` });

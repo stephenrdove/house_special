@@ -1,18 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
-import { checkAndIncrementGenerations, createFamilyForUser, getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
+import { checkAndIncrementGenerations, createFamilyForUser, decrementGeneration, getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
-import { matchRecipe, significantWords } from '../utils/matching.ts';
-
-interface Constraints {
-  family: { adults: number; children: { age: number }[] };
-  allergies: string[];
-  dietary_restrictions: string[];
-  favorites: string[];
-  avoid: string[];
-  preferred_cuisines: string[];
-  notes: string;
-}
+import { matchRecipe } from '../utils/matching.ts';
+import { type Constraints, safeJsonParse, validateDayPlans, validateGroceryItems } from '../utils/safe.ts';
 
 interface DayPlan {
   id: string;
@@ -21,13 +12,6 @@ interface DayPlan {
   notes?: string;
   leftover: boolean;
   recipe_id?: string;
-}
-
-interface GroceryItem {
-  name: string;
-  category: string;
-  warn: boolean;
-  meal_ids: string[];
 }
 
 const DEFAULT_CONSTRAINTS: Constraints = {
@@ -182,6 +166,11 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
   let body: { startDate?: string } = {};
   try { body = await request.json(); } catch { /* no body is fine */ }
 
+  if (body.startDate !== undefined) {
+    const valid = /^\d{4}-\d{2}-\d{2}$/.test(body.startDate) && !isNaN(Date.parse(body.startDate + 'T00:00:00Z'));
+    if (!valid) return json({ error: 'startDate must be a valid YYYY-MM-DD date' }, 400);
+  }
+
   const [constraintsRaw, state, recipes] = await Promise.all([
     getFamilyConstraints(env.DB, familyId),
     getState(env.DB, familyId),
@@ -190,9 +179,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
 
   const recipeNames = recipes.map(r => r.name);
 
-  const constraints: Constraints = constraintsRaw
-    ? JSON.parse(constraintsRaw) as Constraints
-    : DEFAULT_CONSTRAINTS;
+  const constraints: Constraints = safeJsonParse<Constraints>(constraintsRaw, DEFAULT_CONSTRAINTS);
 
   const history = getRecentMealHistory(state.meals);
   const startDate = body.startDate ?? getNextSunday();
@@ -201,33 +188,46 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-  // ── Call 1: suggest 14 dinners ─────────────────────────────────────────────
-  const mealResponse = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    tools: [SUGGEST_DINNERS_TOOL],
-    tool_choice: { type: 'tool', name: 'suggest_dinners' },
-    system: `You are a family meal planning assistant.\n\n${constraintsSummary}`,
-    messages: [
-      {
-        role: 'user',
-        content: `Plan 7 family dinners for this week:\n${weekSchedule}\n\nInclude exactly 1 leftover night. Keep meal names short (2–5 words). Only add notes if essential.${history.length > 0 ? `\n\nRecent meals — do not repeat these:\n${history.join('\n')}` : ''}\n\nCall the suggest_dinners tool with your complete plan.`,
-      },
-    ],
-  });
+  // ── Call 1: suggest 7 dinners ─────────────────────────────────────────────
+  let mealResponse: Anthropic.Message;
+  try {
+    mealResponse = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      tools: [SUGGEST_DINNERS_TOOL],
+      tool_choice: { type: 'tool', name: 'suggest_dinners' },
+      system: `You are a family meal planning assistant.\n\n${constraintsSummary}`,
+      messages: [
+        {
+          role: 'user',
+          content: `Plan 7 family dinners for this week:\n${weekSchedule}\n\nInclude exactly 1 leftover night. Keep meal names short (2–5 words). Only add notes if essential.${history.length > 0 ? `\n\nRecent meals — do not repeat these:\n${history.join('\n')}` : ''}\n\nCall the suggest_dinners tool with your complete plan.`,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('suggest_dinners call failed', err);
+    await decrementGeneration(env.DB, familyId);
+    return json({ error: 'AI service is unavailable. Please try again in a moment.' }, 502);
+  }
 
   const mealToolUse = mealResponse.content.find(b => b.type === 'tool_use');
   if (!mealToolUse || mealToolUse.type !== 'tool_use') {
+    await decrementGeneration(env.DB, familyId);
     return json({ error: 'Failed to generate meal plan' }, 500);
   }
 
-  const rawDays = (mealToolUse.input as { days: Omit<DayPlan, 'id' | 'recipe_id'>[] }).days;
+  const rawDays = validateDayPlans(mealToolUse.input);
+  if (!rawDays) {
+    console.error('suggest_dinners returned invalid tool input', mealToolUse.input);
+    await decrementGeneration(env.DB, familyId);
+    return json({ error: 'Generated plan was malformed. Please try again.' }, 500);
+  }
 
   // Assign stable IDs and match saved recipes.
   const recipesForMatching = recipes.map(r => ({
     id: r.id,
     name: r.name,
-    tags: JSON.parse(r.tags) as string[],
+    tags: safeJsonParse<string[]>(r.tags, []),
   }));
 
   const days: DayPlan[] = rawDays.map(day => {
@@ -241,26 +241,51 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
     ? `\nAllergies (mark warn: true for any item needing a certified safe version): ${constraints.allergies.join(', ')}`
     : '';
 
-  const groceryResponse = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    tools: [BUILD_GROCERY_TOOL],
-    tool_choice: { type: 'tool', name: 'build_grocery_list' },
-    system: `You are a grocery list generator for a family.${allergyNote}`,
-    messages: [
-      {
-        role: 'user',
-        content: `Generate a complete grocery list for this meal plan:\n\n${JSON.stringify(days, null, 2)}\n\nInclude all ingredients needed. Deduplicate items across meals (e.g. olive oil used in 3 meals = one entry). For each item, set meal_ids to the array of meal IDs that require it. Call the build_grocery_list tool.`,
-      },
-    ],
-  });
+  let groceryResponse: Anthropic.Message;
+  try {
+    groceryResponse = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      tools: [BUILD_GROCERY_TOOL],
+      tool_choice: { type: 'tool', name: 'build_grocery_list' },
+      system: `You are a grocery list generator for a family.${allergyNote}`,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a complete grocery list for this meal plan:\n\n${JSON.stringify(days, null, 2)}\n\nInclude all ingredients needed. Deduplicate items across meals (e.g. olive oil used in 3 meals = one entry). For each item, set meal_ids to the array of meal IDs that require it. Call the build_grocery_list tool.`,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('build_grocery_list call failed', err);
+    // Don't refund the rate-limit here: the meal plan succeeded, so the user
+    // got value. Return what we have plus an empty grocery list rather than
+    // forcing a full re-run.
+    return json({
+      weeks: [{ week: 1, days }],
+      grocery: [],
+      warning: 'Grocery list generation failed. You can edit meals to regenerate it.',
+    });
+  }
 
   const groceryToolUse = groceryResponse.content.find(b => b.type === 'tool_use');
   if (!groceryToolUse || groceryToolUse.type !== 'tool_use') {
-    return json({ error: 'Failed to generate grocery list' }, 500);
+    return json({
+      weeks: [{ week: 1, days }],
+      grocery: [],
+      warning: 'Grocery list generation failed.',
+    });
   }
 
-  const groceryItems = (groceryToolUse.input as { items: GroceryItem[] }).items;
+  const groceryItems = validateGroceryItems(groceryToolUse.input);
+  if (!groceryItems) {
+    console.error('build_grocery_list returned invalid tool input', groceryToolUse.input);
+    return json({
+      weeks: [{ week: 1, days }],
+      grocery: [],
+      warning: 'Grocery list was malformed.',
+    });
+  }
 
   return json({
     weeks: [{ week: 1, days }],
@@ -268,7 +293,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
       name: item.name,
       category: item.category,
       warn: item.warn,
-      source_meal_ids: item.meal_ids || [],
+      source_meal_ids: item.meal_ids,
     })),
   });
 }

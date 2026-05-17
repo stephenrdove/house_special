@@ -6,6 +6,7 @@ compatibility_date = "2025-01-01"
 binding = "DB"
 database_name = "housespecial"
 database_id = "d323071c-ff9b-4a7e-a08b-1f93692c918f"
+migrations_dir = "migrations"
 
 # Secrets — set via wrangler secret put, never commit:
 # GOOGLE_CLIENT_ID

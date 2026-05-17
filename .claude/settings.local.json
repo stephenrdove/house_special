@@ -9,7 +9,11 @@
       "Bash(curl -s \"https://api.github.com/repos/actions/setup-node/releases/latest\")",
       "Bash(npx tsc *)",
       "Bash(npm test *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(grep -E \"\\\\.\\(ts|sql|json\\)$\")",
+      "Bash(xargs ls *)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(npx vite *)"
     ]
   }
 }

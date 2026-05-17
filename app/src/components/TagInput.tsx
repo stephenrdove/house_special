@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 interface Props {
   label: string;
@@ -10,16 +10,23 @@ interface Props {
 
 export function TagInput({ label, tags, onChange, placeholder, danger }: Props) {
   const [input, setInput] = useState('');
+  const justCommitted = useRef(false);
 
   function commit() {
     const val = input.trim();
-    if (val && !tags.includes(val)) onChange([...tags, val]);
+    if (val && !tags.includes(val)) {
+      onChange([...tags, val]);
+      justCommitted.current = true;
+    }
     setInput('');
   }
 
   function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    if (e.key === 'Backspace' && !input && tags.length > 0) onChange(tags.slice(0, -1));
+    if (e.key === 'Backspace' && !input && tags.length > 0) {
+      if (justCommitted.current) { justCommitted.current = false; return; }
+      onChange(tags.slice(0, -1));
+    }
   }
 
   return (

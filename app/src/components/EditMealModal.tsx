@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppState, GroceryItem, Meal, Recipe } from '../types';
 import { categorizeGroceryItem } from '../utils/categorize';
+import { DAY_NAMES, MONTH_NAMES_SHORT, parseDateKey } from '../utils/date';
 import { mergeIntoGrocery, removeLinkedGroceryItems } from '../utils/grocery';
 
 interface Props {
@@ -18,12 +19,9 @@ interface LocalGrocery {
   isNew?: true;
 }
 
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
 function formatDate(key: string): string {
-  const d = new Date(key + 'T12:00:00');
-  return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  const d = parseDateKey(key);
+  return `${DAY_NAMES[d.getDay()]}, ${MONTH_NAMES_SHORT[d.getMonth()]} ${d.getDate()}`;
 }
 
 type Sheet = 'main' | 'recipe-picker' | 'add-groceries';
@@ -46,6 +44,16 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose }
 
   const linkedRecipe = recipes.find(r => r.id === linkedRecipeId) ?? null;
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (sheet === 'recipe-picker') setSheet('main');
+      else onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sheet, onClose]);
+
   function applyGroceryEdits(grocery: GroceryItem[], mealId: string): GroceryItem[] {
     let result = [...grocery];
     const localIds = new Set(localGroceries.filter(g => !g.isNew).map(g => g.id));
@@ -61,13 +69,21 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose }
       }
     }
 
-    // Rename existing items
+    // Rename existing items. If the item is shared with other meals, fork it
+    // rather than mutating the shared row — otherwise renaming "Chicken breast"
+    // in Monday's meal silently renames it for every other meal that uses it.
     for (const local of localGroceries.filter(g => !g.isNew)) {
       const trimmed = local.name.trim();
       if (!trimmed) continue;
       const idx = result.findIndex(g => g.id === local.id);
-      if (idx >= 0 && result[idx].name !== trimmed) {
-        result[idx] = { ...result[idx], name: trimmed };
+      if (idx < 0 || result[idx].name === trimmed) continue;
+      const existing = result[idx];
+      if (existing.source_meal_ids.length > 1) {
+        // Unlink from this meal, create a meal-specific copy with the new name
+        result[idx] = { ...existing, source_meal_ids: existing.source_meal_ids.filter(id => id !== mealId) };
+        result.push({ ...existing, id: crypto.randomUUID(), name: trimmed, source_meal_ids: [mealId] });
+      } else {
+        result[idx] = { ...existing, name: trimmed };
       }
     }
 
@@ -88,7 +104,9 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose }
 
   function handleSave() {
     const trimmed = name.trim();
-    if (!trimmed) { handleClear(); return; }
+    // Empty name on a new slot → just close; empty name on an existing meal →
+    // keep it (user must use the "Clear" button to delete intentionally).
+    if (!trimmed) { onClose(); return; }
 
     const mealId = meal?.id || crypto.randomUUID();
     const wasLinked = meal?.recipe_id ?? null;

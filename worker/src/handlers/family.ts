@@ -1,6 +1,7 @@
 import { requireAuth } from '../auth.ts';
 import { acceptInvite, createFamilyForUser, createInviteToken, getFamilyConstraints, getFamilyId, getFamilyMembers, leaveFamily, setFamilyConstraints } from '../db.ts';
 import type { Env } from '../types.ts';
+import { safeJsonParse, validateConstraints } from '../utils/safe.ts';
 
 export async function handleGetFamily(request: Request, env: Env): Promise<Response> {
   const userId = await requireAuth(request, env);
@@ -14,7 +15,7 @@ export async function handleGetFamily(request: Request, env: Env): Promise<Respo
     getFamilyConstraints(env.DB, familyId),
   ]);
 
-  const constraints = constraintsRaw ? JSON.parse(constraintsRaw) : null;
+  const constraints = safeJsonParse<unknown>(constraintsRaw, null);
   return json({ familyId, members, constraints });
 }
 
@@ -62,9 +63,10 @@ export async function handleUpdateConstraints(request: Request, env: Env): Promi
 
   let body: { constraints: unknown };
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
-  if (!body.constraints || typeof body.constraints !== 'object') return json({ error: 'constraints object required' }, 400);
+  const constraints = validateConstraints(body?.constraints);
+  if (!constraints) return json({ error: 'Invalid constraints shape' }, 400);
 
-  await setFamilyConstraints(env.DB, familyId, JSON.stringify(body.constraints));
+  await setFamilyConstraints(env.DB, familyId, JSON.stringify(constraints));
   return json({ ok: true });
 }
 

@@ -51,11 +51,13 @@ Requires `CLOUDFLARE_API_TOKEN` env var. The token needs **Account > D1 > Edit**
 - Schema source of truth: `worker/schema.sql`
 - Migrations: `worker/migrations/` (numbered sequentially)
 
-**Apply a migration to production:**
+**Apply pending migrations:**
 ```bash
 cd worker
-npx wrangler d1 execute housespecial --file=migrations/XXXX_name.sql --remote
+npx wrangler d1 migrations apply housespecial --local    # local dev DB
+npx wrangler d1 migrations apply housespecial --remote   # production
 ```
+Wrangler tracks applied migrations in a `d1_migrations` table and only runs new ones, so this is safe to re-run.
 
 **Reset local DB from scratch (drops all data):**
 ```bash
@@ -63,12 +65,12 @@ cd worker
 rm -rf .wrangler/state
 npx wrangler d1 execute housespecial --file=schema.sql --local
 ```
-Skip individual migration files when resetting locally — `schema.sql` already has the final state and re-running migrations will produce "duplicate column" errors.
+Use `schema.sql` (the final state) for a fresh reset — don't re-run individual migrations on an empty DB, since most are `ALTER TABLE ADD COLUMN` against tables that don't exist yet.
 
 **New migration checklist:**
 1. Create `worker/migrations/000N_description.sql`
 2. Update `worker/schema.sql` to match the final desired state
-3. Apply locally: `npx wrangler d1 execute housespecial --file=migrations/000N_description.sql --local`
+3. Apply locally: `npx wrangler d1 migrations apply housespecial --local`
 4. Apply remotely: same command with `--remote`
 
 ## Architecture notes
@@ -78,6 +80,7 @@ Skip individual migration files when resetting locally — `schema.sql` already 
 - AI meal generation: two sequential Claude calls — `suggest_dinners` (sonnet-4-6, forced tool use, 7-day plan) → `build_grocery_list` (sonnet-4-6, forced tool use). Rate limited to 5 generations/day per family via `generation_log` table.
 - Recipe extraction uses `claude-haiku-4-5-20251001` (cheaper, fast, pure extraction task).
 - Recipe-to-meal linking runs as post-processing after `suggest_dinners` returns — word-level intersection matching between meal name and recipe name/tags.
+- `GET /families/recipes` and `GET /families/me` return all rows with no pagination. Acceptable at current scale (single-family app); add pagination if recipe counts exceed ~500.
 
 **Data model notes:**
 - Each `Meal` has a stable UUID `id` (separate from the `(family_id, date)` DB primary key). This allows future drag-and-swap without breaking grocery links.

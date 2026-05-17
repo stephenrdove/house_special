@@ -31,7 +31,7 @@ function b64urlDecode(s: string): Uint8Array {
 
 export async function createSessionToken(userId: string, secret: string): Promise<string> {
   const timestamp = Date.now().toString();
-  const nonce = randomHex(8);
+  const nonce = randomHex(16);
   const message = `${userId}:${timestamp}:${nonce}`;
   const key = await importKey(secret);
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
@@ -61,9 +61,15 @@ export async function verifySessionToken(token: string, secret: string): Promise
 
 export function parseCookies(header: string | null): Record<string, string> {
   if (!header) return {};
-  return Object.fromEntries(
-    header.split(';').map(c => c.trim().split('=').map(s => decodeURIComponent(s.trim())))
-  );
+  const result: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = decodeURIComponent(part.slice(0, eq).trim());
+    const val = decodeURIComponent(part.slice(eq + 1).trim());
+    if (key) result[key] = val;
+  }
+  return result;
 }
 
 function sessionCookie(value: string, maxAge: number): string {
@@ -71,7 +77,7 @@ function sessionCookie(value: string, maxAge: number): string {
 }
 
 function csrfCookie(value: string): string {
-  return `${COOKIE_CSRF}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`;
+  return `${COOKIE_CSRF}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3600`;
 }
 
 // ─── REQUIRE AUTH ─────────────────────────────────────────────────────────────

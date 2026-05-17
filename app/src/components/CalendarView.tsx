@@ -1,18 +1,12 @@
 import { useState } from 'react';
 import { EditMealModal } from './EditMealModal';
 import type { AppState, Recipe } from '../types';
+import { DAY_NAMES_SHORT, MONTH_NAMES_SHORT, dateKey } from '../utils/date';
 
 interface Props {
   state: AppState;
   mutate: (updater: (prev: AppState) => AppState) => void;
   recipes: Recipe[];
-}
-
-const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function dateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }
 
 function getWeekStart(offset: number): Date {
@@ -26,7 +20,7 @@ function getWeekStart(offset: number): Date {
 function formatWeekLabel(start: Date): string {
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
-  return `${MONTHS_SHORT[start.getMonth()]} ${start.getDate()} – ${MONTHS_SHORT[end.getMonth()]} ${end.getDate()}`;
+  return `${MONTH_NAMES_SHORT[start.getMonth()]} ${start.getDate()} – ${MONTH_NAMES_SHORT[end.getMonth()]} ${end.getDate()}`;
 }
 
 export function CalendarView({ state, mutate, recipes }: Props) {
@@ -81,7 +75,7 @@ export function CalendarView({ state, mutate, recipes }: Props) {
               onClick={() => setEditingKey(key)}
             >
               <div className="day-row-date">
-                <span className="day-row-weekday">{DAYS_SHORT[day.getDay()]}</span>
+                <span className="day-row-weekday">{DAY_NAMES_SHORT[day.getDay()]}</span>
                 <span className="day-row-num">{day.getDate()}</span>
               </div>
               <div className="day-row-meal">
@@ -143,14 +137,14 @@ export function CalendarView({ state, mutate, recipes }: Props) {
               <div>
                 <div className="section-label" style={{ padding: '0 0 8px' }}>Ingredients</div>
                 <ul className="recipe-ingredient-list">
-                  {recipeSheet.ingredients.map((ing, i) => <li key={i}>{ing.name}</li>)}
+                  {recipeSheet.ingredients.map((ing, i) => <li key={ing.name}>{ing.name}</li>)}
                 </ul>
               </div>
               {recipeSheet.steps.length > 0 && (
                 <div>
                   <div className="section-label" style={{ padding: '0 0 8px' }}>Steps</div>
                   <ol className="recipe-step-list">
-                    {recipeSheet.steps.map((step, i) => <li key={i}>{step}</li>)}
+                    {recipeSheet.steps.map((step, i) => <li key={`step-${i}`}>{step}</li>)}
                   </ol>
                 </div>
               )}

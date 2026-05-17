@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
 import { createFamilyForUser, deleteRecipe, getFamilyId, insertRecipe, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
+import { isSafeUrl, safeJsonParse, validateExtractedRecipe } from '../utils/safe.ts';
 
 function stripHtml(html: string): string {
   let text = html.replace(/<script[\s\S]*?<\/script>/gi, '');
@@ -100,6 +101,7 @@ export async function handleExtractRecipe(request: Request, env: Env): Promise<R
   } else {
     let content: string;
     if (body.url) {
+      if (!isSafeUrl(body.url)) return json({ error: 'URL must start with http:// or https://' }, 400);
       sourceUrl = body.url;
       let res: Response;
       try {
@@ -119,26 +121,30 @@ export async function handleExtractRecipe(request: Request, env: Env): Promise<R
     }];
   }
 
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    tools: [EXTRACT_RECIPE_TOOL],
-    tool_choice: { type: 'tool', name: 'extract_recipe' },
-    messages,
-  });
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      tools: [EXTRACT_RECIPE_TOOL],
+      tool_choice: { type: 'tool', name: 'extract_recipe' },
+      messages,
+    });
+  } catch (err) {
+    console.error('extract_recipe call failed', err);
+    return json({ error: 'AI service is unavailable. Please try again in a moment.' }, 502);
+  }
 
   const toolUse = response.content.find(b => b.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') {
     return json({ error: 'Could not extract recipe from that content.' }, 500);
   }
 
-  const extracted = toolUse.input as {
-    name: string;
-    ingredients: { name: string; category: string }[];
-    steps: string[];
-    notes: string;
-    tags: string[];
-  };
+  const extracted = validateExtractedRecipe(toolUse.input);
+  if (!extracted) {
+    console.error('extract_recipe returned invalid tool input', toolUse.input);
+    return json({ error: 'Could not extract recipe from that content.' }, 500);
+  }
 
   return json({ ...extracted, source_url: sourceUrl ?? null });
 }
@@ -188,15 +194,15 @@ export async function handleListRecipes(request: Request, env: Env): Promise<Res
 
   const rows = await listRecipes(env.DB, familyId);
   const recipes = rows.map(r => {
-    const rawIngredients = JSON.parse(r.ingredients) as (string | { name: string; category: string })[];
+    const rawIngredients = safeJsonParse<(string | { name: string; category: string })[]>(r.ingredients, []);
     return {
       id: r.id,
       name: r.name,
       source_url: r.source_url,
       ingredients: rawIngredients.map(i => typeof i === 'string' ? { name: i, category: 'Other' } : i),
-      steps: JSON.parse(r.steps) as string[],
+      steps: safeJsonParse<string[]>(r.steps, []),
       notes: r.notes,
-      tags: JSON.parse(r.tags) as string[],
+      tags: safeJsonParse<string[]>(r.tags, []),
       created_at: r.created_at,
     };
   });

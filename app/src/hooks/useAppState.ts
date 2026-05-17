@@ -10,6 +10,8 @@ export function useAppState(authed: boolean) {
   const [state, setState] = useState<AppState>(EMPTY);
   const [sync, setSync] = useState<SyncStatus>('idle');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The most-recent payload we tried to persist. Retried on user click.
+  const pendingState = useRef<AppState | null>(null);
 
   useEffect(() => {
     if (!authed) return;
@@ -18,22 +20,32 @@ export function useAppState(authed: boolean) {
         setState(remote);
         localStorage.setItem(LOCAL_KEY, JSON.stringify(remote));
       })
-      .catch(() => {
+      .catch(err => {
+        console.warn('initial state load failed, falling back to cache', err);
         try {
           const cached = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '{}');
           if (cached.meals) setState(cached);
-        } catch {}
+        } catch { /* malformed cache */ }
       });
   }, [authed]);
 
   const save = useCallback(async (next: AppState) => {
+    pendingState.current = next;
     setSync('saving');
     try {
       await api.putState(next);
       localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
+      pendingState.current = null;
       setSync('saved');
-      setTimeout(() => setSync('idle'), 2500);
-    } catch {
+      setTimeout(() => {
+        // Only clear the indicator if nothing has failed in the meantime.
+        setSync(prev => (prev === 'saved' ? 'idle' : prev));
+      }, 4000);
+    } catch (err) {
+      console.error('save failed', err);
+      // Keep the optimistic state in the UI so the user doesn't lose typed
+      // edits — but leave sync='error' sticky so they know it's not on the
+      // server. They can click the indicator to retry.
       setSync('error');
     }
   }, []);
@@ -47,5 +59,10 @@ export function useAppState(authed: boolean) {
     });
   }, [save]);
 
-  return { state, mutate, sync };
+  const retrySave = useCallback(() => {
+    const target = pendingState.current ?? state;
+    save(target);
+  }, [save, state]);
+
+  return { state, mutate, sync, retrySave };
 }

@@ -89,7 +89,12 @@ async function handlePutState(request: Request, env: Env): Promise<Response> {
   if (!userId) return json({ error: 'Unauthorized' }, 401);
   let state: AppState;
   try { state = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
-  if (!state.meals || !Array.isArray(state.grocery)) return json({ error: 'Invalid state shape' }, 400);
+  if (!state.meals || typeof state.meals !== 'object' || !Array.isArray(state.grocery))
+    return json({ error: 'Invalid state shape' }, 400);
+  for (const item of state.grocery) {
+    if (typeof item?.id !== 'string' || typeof item?.name !== 'string' || typeof item?.category !== 'string')
+      return json({ error: 'Invalid grocery item shape' }, 400);
+  }
   let familyId = await getFamilyId(env.DB, userId);
   if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
   await putState(env.DB, familyId, state);

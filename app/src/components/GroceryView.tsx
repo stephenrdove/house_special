@@ -155,8 +155,10 @@ export function GroceryView({ state, mutate }: Props) {
                     <span className="grocery-item-label" onClick={() => toggle(item.id)}>
                       {item.name}
                     </span>
-                    {item.warn && allergies.length > 0 && (
-                      <span className="gf-badge">⚠ {allergies.map(allergyBadge).join('/')}</span>
+                    {item.warn && (
+                      <span className="gf-badge">
+                        ⚠ {allergies.length > 0 ? allergies.map(allergyBadge).join('/') : 'allergen'}
+                      </span>
                     )}
                     <button className="del-btn" onClick={() => remove(item.id)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

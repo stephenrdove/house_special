@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { AuthGate } from './components/AuthGate';
 import { CalendarView } from './components/CalendarView';
+import { ErrorToast } from './components/ErrorToast';
 import { GroceryView } from './components/GroceryView';
 import { ImportView } from './components/ImportView';
 import { RecipesView } from './components/RecipesView';
@@ -11,6 +12,11 @@ import { useAuth } from './hooks/useAuth';
 import { useAppState } from './hooks/useAppState';
 import type { Recipe, View } from './types';
 import './styles.css';
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 function CalIcon({ active }: { active: boolean }) {
   return (
@@ -62,14 +68,22 @@ const VIEW_LABELS: Record<View, string> = {
 
 export default function App() {
   const { auth, login, logout } = useAuth();
-  const { state, mutate, sync } = useAppState(auth.status === 'authed');
+  const { state, mutate, sync, retrySave } = useAppState(auth.status === 'authed');
   const [view, setView] = useState<View>('calendar');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const showError = useCallback((msg: string) => setErrorMsg(msg), []);
 
   useEffect(() => {
     if (auth.status !== 'authed') return;
-    api.listRecipes().then(setRecipes).catch(() => {});
-  }, [auth.status]);
+    api.listRecipes()
+      .then(setRecipes)
+      .catch(err => {
+        // 401s clear auth state via the global handler — don't toast for those.
+        if (err && (err as { status?: number }).status === 401) return;
+        showError(errorMessage(err, "Couldn't load recipes."));
+      });
+  }, [auth.status, showError]);
   const [darkMode, setDarkMode] = useState(() => {
     const stored = localStorage.getItem('hs_theme');
     if (stored) return stored === 'dark';
@@ -93,14 +107,22 @@ export default function App() {
     window.history.replaceState({}, '', window.location.pathname);
     api.joinFamily(token).then(result => {
       if (result.conflict) setFamilyConflict(token);
-    }).catch(() => {});
-  }, [auth.status]);
+    }).catch(err => {
+      if (err && (err as { status?: number }).status === 401) return;
+      showError(errorMessage(err, "Couldn't join family."));
+    });
+  }, [auth.status, showError]);
 
   async function handleForceJoin() {
     if (!familyConflict) return;
     const token = familyConflict;
     setFamilyConflict(null);
-    await api.joinFamily(token, true).catch(() => {});
+    try {
+      await api.joinFamily(token, true);
+      window.location.reload();
+    } catch (err) {
+      showError(errorMessage(err, "Couldn't switch families."));
+    }
   }
 
   useEffect(() => {
@@ -166,7 +188,8 @@ export default function App() {
           )}
         </main>
 
-        <SyncIndicator status={sync} />
+        <SyncIndicator status={sync} onRetry={retrySave} />
+        <ErrorToast message={errorMsg} onDismiss={() => setErrorMsg(null)} />
 
         <nav className="bottom-nav">
           {([

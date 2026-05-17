@@ -1,4 +1,5 @@
 import type { AppState, GroceryItem, Meal } from './types.ts';
+import { safeJsonParse } from './utils/safe.ts';
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ export async function getState(db: D1Database, familyId: string): Promise<AppSta
   const grocery: GroceryItem[] = groceryRows.results.map(row => ({
     id: row.id, name: row.name, category: row.category,
     checked: row.checked === 1, warn: row.warn === 1,
-    source_meal_ids: JSON.parse(row.source_meal_ids || '[]') as string[],
+    source_meal_ids: safeJsonParse<string[]>(row.source_meal_ids, []),
   }));
 
   return { meals, grocery };
@@ -156,17 +157,36 @@ export async function checkAndIncrementGenerations(
   db: D1Database, familyId: string,
 ): Promise<{ allowed: boolean; count: number; limit: number }> {
   const date = new Date().toISOString().slice(0, 10);
+  // Atomic check-and-increment: the DO UPDATE only fires if count is under the
+  // limit, so two concurrent requests can't both pass the check. RETURNING
+  // gives us the new count; if WHERE blocked the update, no row is returned.
   const row = await db.prepare(
-    'SELECT count FROM generation_log WHERE family_id = ? AND date = ?'
-  ).bind(familyId, date).first<{ count: number }>();
-  const current = row?.count ?? 0;
-  if (current >= DAILY_GENERATION_LIMIT) {
-    return { allowed: false, count: current, limit: DAILY_GENERATION_LIMIT };
+    `INSERT INTO generation_log (family_id, date, count) VALUES (?, ?, 1)
+     ON CONFLICT(family_id, date) DO UPDATE SET count = count + 1 WHERE generation_log.count < ?
+     RETURNING count`
+  ).bind(familyId, date, DAILY_GENERATION_LIMIT).first<{ count: number }>();
+
+  if (!row) {
+    // Conflict + WHERE blocked: we're at or over the limit. Read current for the message.
+    const existing = await db.prepare(
+      'SELECT count FROM generation_log WHERE family_id = ? AND date = ?'
+    ).bind(familyId, date).first<{ count: number }>();
+    return { allowed: false, count: existing?.count ?? DAILY_GENERATION_LIMIT, limit: DAILY_GENERATION_LIMIT };
   }
-  await db.prepare(
-    'INSERT INTO generation_log (family_id, date, count) VALUES (?,?,1) ON CONFLICT(family_id, date) DO UPDATE SET count = count + 1'
-  ).bind(familyId, date).run();
-  return { allowed: true, count: current + 1, limit: DAILY_GENERATION_LIMIT };
+  return { allowed: true, count: row.count, limit: DAILY_GENERATION_LIMIT };
+}
+
+// Roll back a counted generation when the downstream call fails. Best-effort
+// (never throws) so the original error reaches the caller intact.
+export async function decrementGeneration(db: D1Database, familyId: string): Promise<void> {
+  const date = new Date().toISOString().slice(0, 10);
+  try {
+    await db.prepare(
+      'UPDATE generation_log SET count = count - 1 WHERE family_id = ? AND date = ? AND count > 0'
+    ).bind(familyId, date).run();
+  } catch (err) {
+    console.error('decrementGeneration failed', err);
+  }
 }
 
 // ─── RECIPES ──────────────────────────────────────────────────────────────────
