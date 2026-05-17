@@ -137,7 +137,7 @@ export function CalendarView({ state, mutate, recipes }: Props) {
               <div>
                 <div className="section-label" style={{ padding: '0 0 8px' }}>Ingredients</div>
                 <ul className="recipe-ingredient-list">
-                  {recipeSheet.ingredients.map((ing, i) => <li key={ing.name}>{ing.name}</li>)}
+                  {recipeSheet.ingredients.map(ing => <li key={ing.name}>{ing.name}</li>)}
                 </ul>
               </div>
               {recipeSheet.steps.length > 0 && (

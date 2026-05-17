@@ -406,7 +406,7 @@ export function RecipesView({ recipes, setRecipes }: Props) {
               <div>
                 <div className="section-label" style={{ padding: '0 0 8px' }}>Ingredients</div>
                 <ul className="recipe-ingredient-list">
-                  {activeRecipe.ingredients.map((ing, i) => <li key={ing.name}>{ing.name}</li>)}
+                  {activeRecipe.ingredients.map(ing => <li key={ing.name}>{ing.name}</li>)}
                 </ul>
               </div>
               {activeRecipe.steps.length > 0 && (
