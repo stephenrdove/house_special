@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
-import { createFamilyForUser, deleteRecipe, getFamilyId, insertRecipe, listRecipes } from '../db.ts';
+import { createFamilyForUser, createRecipeShare, deleteRecipe, getFamilyId, getRecipeById, getRecipeShare, insertRecipe, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
 import { isSafeUrl, safeJsonParse, validateExtractedRecipe } from '../utils/safe.ts';
 
@@ -220,6 +220,50 @@ export async function handleDeleteRecipe(request: Request, env: Env, recipeId: s
   const deleted = await deleteRecipe(env.DB, familyId, recipeId);
   if (!deleted) return json({ error: 'Recipe not found' }, 404);
   return json({ ok: true });
+}
+
+export async function handleShareRecipe(request: Request, env: Env, recipeId: string): Promise<Response> {
+  const userId = await requireAuth(request, env);
+  if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+  const familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) return json({ error: 'No family found' }, 404);
+
+  const recipe = await getRecipeById(env.DB, familyId, recipeId);
+  if (!recipe) return json({ error: 'Recipe not found' }, 404);
+
+  const token = await createRecipeShare(env.DB, familyId, userId, recipe);
+  const url = `${env.ALLOWED_ORIGIN}?sharedRecipe=${token}`;
+  return json({ token, url });
+}
+
+export async function handleGetSharedRecipe(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token');
+  if (!token) return json({ error: 'token required' }, 400);
+
+  const share = await getRecipeShare(env.DB, token);
+  if (!share) return json({ error: 'Share link not found' }, 404);
+  if (Date.now() > share.expires_at) return json({ error: 'Share link has expired' }, 410);
+
+  type SnapshotShape = { name: string; source_url: string | null; ingredients: string; steps: string; notes: string; tags: string };
+  const raw = safeJsonParse<SnapshotShape | null>(share.snapshot, null);
+
+  if (!raw) return json({ error: 'Invalid share data' }, 500);
+
+  return json({
+    recipe: {
+      name: raw.name,
+      source_url: raw.source_url,
+      ingredients: safeJsonParse<{ name: string; category: string }[]>(raw.ingredients, []).map(i =>
+        typeof i === 'string' ? { name: i, category: 'Other' } : i
+      ),
+      steps: safeJsonParse<string[]>(raw.steps, []),
+      notes: raw.notes,
+      tags: safeJsonParse<string[]>(raw.tags, []),
+    },
+    expires_at: share.expires_at,
+  });
 }
 
 function json(body: unknown, status = 200): Response {

@@ -96,6 +96,19 @@ export default function App() {
   if (urlToken) sessionStorage.setItem('hs_invite', urlToken);
   const inviteToken = useRef<string | null>(sessionStorage.getItem('hs_invite'));
 
+  // Shared recipe token — persist through auth redirect
+  const urlSharedRecipe = new URLSearchParams(window.location.search).get('sharedRecipe');
+  if (urlSharedRecipe) sessionStorage.setItem('hs_shared_recipe', urlSharedRecipe);
+  const [pendingSharedRecipe, setPendingSharedRecipe] = useState<{
+    name: string;
+    source_url: string | null;
+    ingredients: { name: string; category: string }[];
+    steps: string[];
+    notes: string;
+    tags: string[];
+  } | null>(null);
+  const [addingSharedRecipe, setAddingSharedRecipe] = useState(false);
+
   // After signing in, consume pending invite token
   useEffect(() => {
     if (auth.status !== 'authed') return;
@@ -112,6 +125,34 @@ export default function App() {
       showError(errorMessage(err, "Couldn't join family."));
     });
   }, [auth.status, showError]);
+
+  // After signing in, fetch pending shared recipe
+  useEffect(() => {
+    if (auth.status !== 'authed') return;
+    const token = sessionStorage.getItem('hs_shared_recipe');
+    if (!token) return;
+    sessionStorage.removeItem('hs_shared_recipe');
+    window.history.replaceState({}, '', window.location.pathname);
+    api.getSharedRecipe(token)
+      .then(({ recipe }) => setPendingSharedRecipe(recipe))
+      .catch(err => showError(errorMessage(err, "Couldn't load shared recipe.")));
+  }, [auth.status, showError]);
+
+  async function handleAddSharedRecipe() {
+    if (!pendingSharedRecipe) return;
+    setAddingSharedRecipe(true);
+    try {
+      const { id } = await api.saveRecipe(pendingSharedRecipe);
+      const saved: Recipe = { ...pendingSharedRecipe, id, created_at: Date.now() };
+      setRecipes(prev => [saved, ...prev]);
+      setPendingSharedRecipe(null);
+      setView('recipes');
+    } catch (err) {
+      showError(errorMessage(err, "Couldn't add recipe."));
+    } finally {
+      setAddingSharedRecipe(false);
+    }
+  }
 
   async function handleForceJoin() {
     if (!familyConflict) return;
@@ -151,6 +192,58 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {pendingSharedRecipe && (
+        <div className="sheet-overlay" onClick={() => setPendingSharedRecipe(null)}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">Shared Recipe</span>
+              <button className="icon-btn" onClick={() => setPendingSharedRecipe(null)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div className="sheet-body">
+              <div style={{ fontWeight: 600, fontSize: 16 }}>{pendingSharedRecipe.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+                {pendingSharedRecipe.ingredients.length} ingredient{pendingSharedRecipe.ingredients.length !== 1 ? 's' : ''}
+                {pendingSharedRecipe.steps.length > 0 && ` · ${pendingSharedRecipe.steps.length} step${pendingSharedRecipe.steps.length !== 1 ? 's' : ''}`}
+              </div>
+              {pendingSharedRecipe.tags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {pendingSharedRecipe.tags.map(tag => (
+                    <span key={tag} className="tag" style={{ fontSize: 11 }}>{tag}</span>
+                  ))}
+                </div>
+              )}
+              {pendingSharedRecipe.source_url && (
+                <a
+                  href={pendingSharedRecipe.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: 'var(--accent)', wordBreak: 'break-all' }}
+                >
+                  {pendingSharedRecipe.source_url}
+                </a>
+              )}
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPendingSharedRecipe(null)}>Dismiss</button>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={handleAddSharedRecipe}
+                disabled={addingSharedRecipe}
+              >
+                {addingSharedRecipe ? 'Adding…' : 'Add to my recipes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="app-shell">
         <header className="app-header">
           <span className="app-header-title">

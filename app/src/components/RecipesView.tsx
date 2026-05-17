@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import type { ExtractedRecipe, Recipe, RecipeIngredient } from '../types';
 
-type Sheet = 'none' | 'add' | 'preview' | 'detail' | 'delete-confirm';
+type Sheet = 'none' | 'add' | 'preview' | 'detail' | 'delete-confirm' | 'share-link';
 
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
@@ -10,6 +10,15 @@ function CloseIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
     </svg>
   );
 }
@@ -68,9 +77,11 @@ export function RecipesView({ recipes, setRecipes }: Props) {
   const [previewTags, setPreviewTags] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Detail / delete state
+  // Detail / delete / share state
   const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
 
   function openDetail(recipe: Recipe) {
     setActiveRecipe(recipe);
@@ -164,6 +175,20 @@ export function RecipesView({ recipes, setRecipes }: Props) {
       // keep sheet open
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleShare() {
+    if (!activeRecipe) return;
+    setSharing(true);
+    try {
+      const result = await api.shareRecipe(activeRecipe.id);
+      setShareUrl(result.url);
+      setSheet('share-link');
+    } catch {
+      // keep detail sheet open
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -398,6 +423,19 @@ export function RecipesView({ recipes, setRecipes }: Props) {
             </div>
             <div className="sheet-footer">
               <button className="btn btn-danger btn-sm" onClick={() => setSheet('delete-confirm')}>Delete</button>
+              <button
+                className="icon-btn"
+                title="Share recipe"
+                onClick={handleShare}
+                disabled={sharing}
+                style={{ marginLeft: 'auto' }}
+              >
+                {sharing ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                ) : <ShareIcon />}
+              </button>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setSheet('none')}>Done</button>
             </div>
           </div>
@@ -421,6 +459,37 @@ export function RecipesView({ recipes, setRecipes }: Props) {
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setSheet('detail')}>Cancel</button>
               <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleDelete} disabled={deleting}>
                 {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Share link sheet ────────────────────────────────────────────────── */}
+      {sheet === 'share-link' && shareUrl && (
+        <div className="sheet-overlay" onClick={() => setSheet('detail')}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="sheet-title">Share Recipe</span>
+              <button className="icon-btn" onClick={() => setSheet('detail')}><CloseIcon /></button>
+            </div>
+            <div className="sheet-body">
+              <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+                Send this link to another family. They can preview and add the recipe to their collection. The link expires in 7 days.
+              </p>
+              <div className="input" style={{ fontSize: 12, wordBreak: 'break-all', color: 'var(--text2)', userSelect: 'all' }}>
+                {shareUrl}
+              </div>
+            </div>
+            <div className="sheet-footer">
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setSheet('detail')}>Close</button>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => navigator.clipboard.writeText(shareUrl).catch(() => {})}
+              >
+                Copy Link
               </button>
             </div>
           </div>

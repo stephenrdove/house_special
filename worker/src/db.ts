@@ -238,6 +238,50 @@ export async function deleteRecipe(
   return result.meta.changes > 0;
 }
 
+export async function getRecipeById(
+  db: D1Database, familyId: string, recipeId: string,
+): Promise<RecipeRow | null> {
+  return db.prepare('SELECT * FROM recipes WHERE id = ? AND family_id = ?')
+    .bind(recipeId, familyId).first<RecipeRow>();
+}
+
+export interface RecipeShareRow {
+  token: string;
+  family_id: string;
+  recipe_id: string;
+  snapshot: string;
+  expires_at: number;
+}
+
+export async function createRecipeShare(
+  db: D1Database, familyId: string, createdBy: string, recipe: RecipeRow,
+): Promise<string> {
+  const arr = new Uint8Array(24);
+  crypto.getRandomValues(arr);
+  const token = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+  const snapshot = JSON.stringify({
+    name: recipe.name,
+    source_url: recipe.source_url,
+    ingredients: recipe.ingredients,
+    steps: recipe.steps,
+    notes: recipe.notes,
+    tags: recipe.tags,
+  });
+  await db.prepare(
+    'INSERT INTO recipe_shares (token, family_id, created_by, recipe_id, snapshot, expires_at) VALUES (?,?,?,?,?,?)'
+  ).bind(token, familyId, createdBy, recipe.id, snapshot, expiresAt).run();
+  return token;
+}
+
+export async function getRecipeShare(
+  db: D1Database, token: string,
+): Promise<RecipeShareRow | null> {
+  return db.prepare(
+    'SELECT token, family_id, recipe_id, snapshot, expires_at FROM recipe_shares WHERE token = ?'
+  ).bind(token).first<RecipeShareRow>();
+}
+
 export async function acceptInvite(
   db: D1Database, userId: string, token: string, force = false,
 ): Promise<{ ok: boolean; error?: string; conflict?: boolean }> {

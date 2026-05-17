@@ -84,5 +84,29 @@ export const api = {
   saveRecipe:    (r: Omit<Recipe, 'id' | 'created_at'>)   => req<{ id: string; ok: boolean }>('/families/recipes', { method: 'POST', body: JSON.stringify(r) }),
   extractRecipe: (body: { url?: string; text?: string; file?: string }) => req<ExtractedRecipe>('/families/recipes/extract', { method: 'POST', body: JSON.stringify(body) }),
   deleteRecipe:  (id: string)                              => req<{ ok: boolean }>(`/families/recipes/${id}`, { method: 'DELETE' }),
+  shareRecipe:   (recipeId: string)                        => req<{ token: string; url: string }>(`/families/recipes/${recipeId}/share`, { method: 'POST' }),
+  getSharedRecipe: async (token: string) => {
+    // Public endpoint — no credentials, no 401 broadcast
+    const res = await fetch(`${BASE}/shared/recipe?token=${encodeURIComponent(token)}`);
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try {
+        const body = await res.clone().json() as { error?: string };
+        if (body?.error) message = body.error;
+      } catch { /* non-JSON body */ }
+      throw new ApiError(message, res.status);
+    }
+    return res.json() as Promise<{
+      recipe: {
+        name: string;
+        source_url: string | null;
+        ingredients: { name: string; category: string }[];
+        steps: string[];
+        notes: string;
+        tags: string[];
+      };
+      expires_at: number;
+    }>;
+  },
   loginUrl:      ()                             => `${BASE}/auth/login`,
 };

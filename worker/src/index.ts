@@ -2,7 +2,7 @@ import { handleCallback, handleLogin, handleLogout, handleMe, requireAuth } from
 import { createFamilyForUser, getFamilyId, getState, putState, updateGroceryItem } from './db.ts';
 import { handleCreateInvite, handleGetFamily, handleJoinFamily, handleLeaveFamily, handleUpdateConstraints } from './handlers/family.ts';
 import { handleGenerate } from './handlers/generate.ts';
-import { handleDeleteRecipe, handleExtractRecipe, handleListRecipes, handleSaveRecipe } from './handlers/recipes.ts';
+import { handleDeleteRecipe, handleExtractRecipe, handleGetSharedRecipe, handleListRecipes, handleSaveRecipe, handleShareRecipe } from './handlers/recipes.ts';
 import type { AppState, Env } from './types.ts';
 
 export default {
@@ -41,10 +41,18 @@ export default {
       response = await handleListRecipes(request, env);
     else if (url.pathname === '/families/recipes' && request.method === 'POST')
       response = await handleSaveRecipe(request, env);
+    else if (url.pathname.startsWith('/families/recipes/') && url.pathname.endsWith('/share') && request.method === 'POST') {
+      const recipeId = url.pathname.slice('/families/recipes/'.length, -'/share'.length);
+      response = await handleShareRecipe(request, env, recipeId);
+    }
     else if (url.pathname.startsWith('/families/recipes/') && request.method === 'DELETE') {
       const recipeId = url.pathname.slice('/families/recipes/'.length);
       response = await handleDeleteRecipe(request, env, recipeId);
     }
+
+    // ── Public routes ──────────────────────────────────────────────────────────
+    else if (url.pathname === '/shared/recipe' && request.method === 'GET')
+      response = await handleGetSharedRecipe(request, env);
 
     // ── State routes ───────────────────────────────────────────────────────────
     else if (url.pathname === '/state' && request.method === 'GET')
