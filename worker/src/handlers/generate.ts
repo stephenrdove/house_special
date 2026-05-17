@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
-import { checkAndIncrementGenerations, getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
+import { checkAndIncrementGenerations, createFamilyForUser, getFamilyConstraints, getFamilyId, getState, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
 import { matchRecipe, significantWords } from '../utils/matching.ts';
 
@@ -171,8 +171,8 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
   const userId = await requireAuth(request, env);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const familyId = await getFamilyId(env.DB, userId);
-  if (!familyId) return json({ error: 'No family found' }, 404);
+  let familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
 
   const rateCheck = await checkAndIncrementGenerations(env.DB, familyId);
   if (!rateCheck.allowed) {
@@ -204,7 +204,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
   // ── Call 1: suggest 14 dinners ─────────────────────────────────────────────
   const mealResponse = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 1024,
     tools: [SUGGEST_DINNERS_TOOL],
     tool_choice: { type: 'tool', name: 'suggest_dinners' },
     system: `You are a family meal planning assistant.\n\n${constraintsSummary}`,
@@ -242,8 +242,8 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
     : '';
 
   const groceryResponse = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 2048,
     tools: [BUILD_GROCERY_TOOL],
     tool_choice: { type: 'tool', name: 'build_grocery_list' },
     system: `You are a grocery list generator for a family.${allergyNote}`,

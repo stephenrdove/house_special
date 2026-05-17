@@ -1,5 +1,5 @@
 import { requireAuth } from '../auth.ts';
-import { acceptInvite, createInviteToken, getFamilyConstraints, getFamilyId, getFamilyMembers, leaveFamily, setFamilyConstraints } from '../db.ts';
+import { acceptInvite, createFamilyForUser, createInviteToken, getFamilyConstraints, getFamilyId, getFamilyMembers, leaveFamily, setFamilyConstraints } from '../db.ts';
 import type { Env } from '../types.ts';
 
 export async function handleGetFamily(request: Request, env: Env): Promise<Response> {
@@ -22,8 +22,8 @@ export async function handleCreateInvite(request: Request, env: Env): Promise<Re
   const userId = await requireAuth(request, env);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const familyId = await getFamilyId(env.DB, userId);
-  if (!familyId) return json({ error: 'No family found' }, 404);
+  let familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
 
   const token = await createInviteToken(env.DB, familyId, userId);
   const url = `${env.ALLOWED_ORIGIN}?join=${token}`;
@@ -57,8 +57,8 @@ export async function handleUpdateConstraints(request: Request, env: Env): Promi
   const userId = await requireAuth(request, env);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const familyId = await getFamilyId(env.DB, userId);
-  if (!familyId) return json({ error: 'No family found' }, 404);
+  let familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
 
   let body: { constraints: unknown };
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }

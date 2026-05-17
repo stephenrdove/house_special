@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../auth.ts';
-import { deleteRecipe, getFamilyId, insertRecipe, listRecipes } from '../db.ts';
+import { createFamilyForUser, deleteRecipe, getFamilyId, insertRecipe, listRecipes } from '../db.ts';
 import type { Env } from '../types.ts';
 
 function stripHtml(html: string): string {
@@ -56,8 +56,8 @@ export async function handleExtractRecipe(request: Request, env: Env): Promise<R
   const userId = await requireAuth(request, env);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const familyId = await getFamilyId(env.DB, userId);
-  if (!familyId) return json({ error: 'No family found' }, 404);
+  let familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
 
   let body: { url?: string; text?: string; file?: string };
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
@@ -147,8 +147,8 @@ export async function handleSaveRecipe(request: Request, env: Env): Promise<Resp
   const userId = await requireAuth(request, env);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const familyId = await getFamilyId(env.DB, userId);
-  if (!familyId) return json({ error: 'No family found' }, 404);
+  let familyId = await getFamilyId(env.DB, userId);
+  if (!familyId) familyId = await createFamilyForUser(env.DB, userId);
 
   let body: {
     name?: string;
