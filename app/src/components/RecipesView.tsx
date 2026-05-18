@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import type { ExtractedRecipe, Recipe, RecipeIngredient } from '../types';
+import { RecipeCookView } from './RecipeCookView';
 
 type Sheet = 'none' | 'add' | 'preview' | 'detail' | 'delete-confirm' | 'share-link';
 
@@ -83,6 +84,7 @@ export function RecipesView({ recipes, setRecipes, showError }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [cookRecipe, setCookRecipe] = useState<Recipe | null>(null);
 
   function openDetail(recipe: Recipe) {
     setActiveRecipe(recipe);
@@ -437,7 +439,7 @@ export function RecipesView({ recipes, setRecipes, showError }: Props) {
                   </svg>
                 ) : <ShareIcon />}
               </button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setSheet('none')}>Done</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setCookRecipe(activeRecipe)}>Cook</button>
             </div>
           </div>
         </div>
@@ -495,6 +497,10 @@ export function RecipesView({ recipes, setRecipes, showError }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {cookRecipe && (
+        <RecipeCookView recipe={cookRecipe} onClose={() => setCookRecipe(null)} />
       )}
     </div>
   );

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { AppState, GroceryItem, Meal, Recipe } from '../types';
 import { categorizeGroceryItem } from '../utils/categorize';
 import { DAY_NAMES, MONTH_NAMES_SHORT, parseDateKey } from '../utils/date';
-import { mergeIntoGrocery, removeLinkedGroceryItems } from '../utils/grocery';
+import { mergeIntoGrocery, nameOverlaps, removeLinkedGroceryItems, toGroceryName } from '../utils/grocery';
+import { RecipeCookView } from './RecipeCookView';
 
 interface Props {
   dateKey: string;
@@ -34,6 +35,7 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose, 
   const [linkedRecipeId, setLinkedRecipeId] = useState<string | null>(meal?.recipe_id ?? null);
   const [sheet, setSheet] = useState<Sheet>('main');
   const [pendingMealId, setPendingMealId] = useState<string | null>(null);
+  const [cooking, setCooking] = useState(false);
 
   const initialGroceries = meal?.id
     ? state.grocery.filter(g => g.source_meal_ids.includes(meal.id))
@@ -239,6 +241,7 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose, 
   }
 
   return (
+    <>
     <div className="sheet-overlay" onClick={handleOverlayClick}>
       <div className="sheet">
         <div className="sheet-handle" />
@@ -273,19 +276,46 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose, 
             />
           </div>
 
-          <button
-            className="btn btn-ghost btn-full btn-sm"
-            style={{ justifyContent: 'flex-start', gap: 8 }}
-            onClick={() => setSheet('recipe-picker')}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-            </svg>
-            {linkedRecipe ? linkedRecipe.name : 'Link recipe'}
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ flex: 1, justifyContent: 'flex-start', gap: 8 }}
+              onClick={() => setSheet('recipe-picker')}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+              {linkedRecipe ? linkedRecipe.name : 'Link recipe'}
+            </button>
+            {linkedRecipe && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setCooking(true)}
+              >
+                Cook
+              </button>
+            )}
+          </div>
 
           <div>
-            <label className="field-label">Groceries</label>
+            <label className="field-label">{linkedRecipe ? 'Recipe ingredients' : 'Groceries'}</label>
+            {linkedRecipe && linkedRecipe.ingredients.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+                {linkedRecipe.ingredients.map((ing, i) => {
+                  const groceryName = toGroceryName(ing.name);
+                  const isOnList = state.grocery.some(g => nameOverlaps(g.name, groceryName));
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <span style={{ color: isOnList ? 'var(--accent)' : 'var(--border)', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>
+                        {isOnList ? '✓' : '○'}
+                      </span>
+                      <span style={{ color: isOnList ? 'var(--text2)' : 'var(--text)' }}>{groceryName}</span>
+                      {isOnList && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text2)' }}>on list</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {localGroceries.map((g, i) => (
                 <div key={g.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -351,5 +381,10 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose, 
         </div>
       </div>
     </div>
+
+    {cooking && linkedRecipe && (
+      <RecipeCookView recipe={linkedRecipe} onClose={() => setCooking(false)} />
+    )}
+    </>
   );
 }
