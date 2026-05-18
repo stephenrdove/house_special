@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { GROCERY_CATEGORIES } from '../types';
 import type { AppState, GroceryCategory } from '../types';
+import { learnCategory } from '../utils/categorize';
 
 const ALLERGY_BADGE: Record<string, string> = {
   gluten: 'GF', wheat: 'GF',
@@ -79,6 +80,15 @@ export function GroceryView({ state, mutate }: Props) {
 
   function remove(id: string) {
     mutate(prev => ({ ...prev, grocery: prev.grocery.filter(g => g.id !== id) }));
+  }
+
+  function changeCategory(id: string, category: GroceryCategory) {
+    const item = state.grocery.find(g => g.id === id);
+    if (item) learnCategory(item.name, category);
+    mutate(prev => ({
+      ...prev,
+      grocery: prev.grocery.map(g => g.id === id ? { ...g, category } : g),
+    }));
   }
 
   function addItem() {
@@ -160,6 +170,14 @@ export function GroceryView({ state, mutate }: Props) {
                         ⚠ {allergies.length > 0 ? allergies.map(allergyBadge).join('/') : 'allergen'}
                       </span>
                     )}
+                    <select
+                      className="cat-select"
+                      value={item.category}
+                      onChange={e => changeCategory(item.id, e.target.value as GroceryCategory)}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {GROCERY_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
                     <button className="del-btn" onClick={() => remove(item.id)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <path d="M18 6L6 18M6 6l12 12"/>

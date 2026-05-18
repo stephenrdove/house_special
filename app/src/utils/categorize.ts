@@ -430,10 +430,35 @@ const KEYWORDS: [string, GroceryCategory][] = [
   ['dried herb', 'Pantry / Dry Goods'],
 ];
 
+function stem(word: string): string {
+  if (word.length < 4) return word;
+  if (word.endsWith('ies') && word.length > 4) return word.slice(0, -3) + 'y';
+  if (word.endsWith('ves') && word.length > 4) return word.slice(0, -3) + 'f';
+  if (word.endsWith('ing') && word.length > 5) return word.slice(0, -3);
+  if (word.endsWith('ed') && word.length > 4) return word.slice(0, -2);
+  if (word.endsWith('es') && word.length > 3) return word.slice(0, -2);
+  if (word.endsWith('s') && word.length > 3 && !word.endsWith('ss')) return word.slice(0, -1);
+  return word;
+}
+
 function significantWords(s: string): Set<string> {
   return new Set(
-    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2)
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2).map(stem)
   );
+}
+
+const LEARNED_KEY = 'hs_category_learned';
+
+function getLearnedItems(): { name: string; category: string }[] {
+  try { return JSON.parse(localStorage.getItem(LEARNED_KEY) ?? '[]'); }
+  catch { return []; }
+}
+
+export function learnCategory(name: string, category: GroceryCategory): void {
+  const items = getLearnedItems().filter(i => i.name !== name);
+  items.push({ name, category });
+  if (items.length > 300) items.splice(0, items.length - 300);
+  localStorage.setItem(LEARNED_KEY, JSON.stringify(items));
 }
 
 export function categorizeGroceryItem(
@@ -443,7 +468,15 @@ export function categorizeGroceryItem(
   const lower = name.toLowerCase();
   const words = significantWords(name);
 
-  // 1. Match against existing grocery list items by word overlap — inherit their category
+  // 1. Learned corrections — word overlap against past manual category changes
+  for (const item of getLearnedItems()) {
+    const itemWords = significantWords(item.name);
+    for (const w of words) {
+      if (itemWords.has(w)) return item.category as GroceryCategory;
+    }
+  }
+
+  // 2. Match against existing grocery list items by word overlap — inherit their category
   for (const item of existingGrocery) {
     const itemWords = significantWords(item.name);
     for (const w of words) {
@@ -451,7 +484,7 @@ export function categorizeGroceryItem(
     }
   }
 
-  // 2. Dictionary lookup — phrases first (ordered list handles priority)
+  // 3. Dictionary lookup — phrases first (ordered list handles priority)
   for (const [keyword, category] of KEYWORDS) {
     if (lower.includes(keyword)) return category;
   }

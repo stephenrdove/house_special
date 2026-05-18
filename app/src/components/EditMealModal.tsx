@@ -11,6 +11,7 @@ interface Props {
   state: AppState;
   mutate: (updater: (prev: AppState) => AppState) => void;
   onClose: () => void;
+  onMove?: () => void;
 }
 
 interface LocalGrocery {
@@ -26,7 +27,7 @@ function formatDate(key: string): string {
 
 type Sheet = 'main' | 'recipe-picker' | 'add-groceries';
 
-export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose }: Props) {
+export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose, onMove }: Props) {
   const [name, setName] = useState(meal?.name ?? '');
   const [notes, setNotes] = useState(meal?.notes ?? '');
   const [leftover, setLeftover] = useState(meal?.leftover ?? false);
@@ -331,6 +332,14 @@ export function EditMealModal({ dateKey, meal, recipes, state, mutate, onClose }
           {meal && (
             <button className="btn btn-ghost btn-sm" onClick={handleClear}>
               Clear
+            </button>
+          )}
+          {meal && onMove && (
+            <button className="btn btn-ghost btn-sm" onClick={onMove} title="Move to another day">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
+              </svg>
+              Move
             </button>
           )}
           <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ marginLeft: meal ? 0 : 'auto' }}>

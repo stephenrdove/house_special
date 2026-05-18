@@ -14,7 +14,8 @@
       "Bash(xargs ls *)",
       "Bash(npx --no-install tsc --noEmit)",
       "Bash(npx vite *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(chmod +x *)"
     ]
   }
 }
