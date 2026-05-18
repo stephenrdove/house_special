@@ -3,26 +3,31 @@ import { safeJsonParse } from './utils/safe.ts';
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 
-export async function getState(db: D1Database, familyId: string): Promise<AppState> {
+export async function getState(db: D1Database, familyId: string): Promise<AppState & { updated_at: number }> {
   const [mealsRows, groceryRows] = await Promise.all([
-    db.prepare('SELECT id, date, name, notes, leftover, recipe_id FROM meals WHERE family_id = ?')
-      .bind(familyId).all<{ id: string; date: string; name: string; notes: string; leftover: number; recipe_id: string | null }>(),
-    db.prepare('SELECT id, name, category, checked, warn, source_meal_ids FROM grocery_items WHERE family_id = ? ORDER BY sort_order ASC')
-      .bind(familyId).all<{ id: string; name: string; category: string; checked: number; warn: number; source_meal_ids: string }>(),
+    db.prepare('SELECT id, date, name, notes, leftover, recipe_id, updated_at FROM meals WHERE family_id = ?')
+      .bind(familyId).all<{ id: string; date: string; name: string; notes: string; leftover: number; recipe_id: string | null; updated_at: number }>(),
+    db.prepare('SELECT id, name, category, checked, warn, source_meal_ids, updated_at FROM grocery_items WHERE family_id = ? ORDER BY sort_order ASC')
+      .bind(familyId).all<{ id: string; name: string; category: string; checked: number; warn: number; source_meal_ids: string; updated_at: number }>(),
   ]);
 
   const meals: Record<string, Meal> = {};
+  let updated_at = 0;
   for (const row of mealsRows.results) {
     meals[row.date] = { id: row.id, name: row.name, notes: row.notes, leftover: row.leftover === 1, recipe_id: row.recipe_id ?? undefined };
+    if (row.updated_at > updated_at) updated_at = row.updated_at;
   }
 
-  const grocery: GroceryItem[] = groceryRows.results.map(row => ({
-    id: row.id, name: row.name, category: row.category,
-    checked: row.checked === 1, warn: row.warn === 1,
-    source_meal_ids: safeJsonParse<string[]>(row.source_meal_ids, []),
-  }));
+  const grocery: GroceryItem[] = groceryRows.results.map(row => {
+    if (row.updated_at > updated_at) updated_at = row.updated_at;
+    return {
+      id: row.id, name: row.name, category: row.category,
+      checked: row.checked === 1, warn: row.warn === 1,
+      source_meal_ids: safeJsonParse<string[]>(row.source_meal_ids, []),
+    };
+  });
 
-  return { meals, grocery };
+  return { meals, grocery, updated_at };
 }
 
 export async function putState(db: D1Database, familyId: string, state: AppState): Promise<void> {

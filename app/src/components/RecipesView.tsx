@@ -54,9 +54,10 @@ function RecipeCard({ recipe, onClick }: { recipe: Recipe; onClick: () => void }
 interface Props {
   recipes: Recipe[];
   setRecipes: (fn: (prev: Recipe[]) => Recipe[]) => void;
+  showError: (msg: string) => void;
 }
 
-export function RecipesView({ recipes, setRecipes }: Props) {
+export function RecipesView({ recipes, setRecipes, showError }: Props) {
   const [sheet, setSheet] = useState<Sheet>('none');
 
   // Add sheet state
@@ -171,8 +172,8 @@ export function RecipesView({ recipes, setRecipes }: Props) {
       setRecipes((prev: Recipe[]) => prev.filter(r => r.id !== activeRecipe.id));
       setSheet('none');
       setActiveRecipe(null);
-    } catch {
-      // keep sheet open
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Couldn't delete recipe.");
     } finally {
       setDeleting(false);
     }
@@ -185,8 +186,8 @@ export function RecipesView({ recipes, setRecipes }: Props) {
       const result = await api.shareRecipe(activeRecipe.id);
       setShareUrl(result.url);
       setSheet('share-link');
-    } catch {
-      // keep detail sheet open
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Couldn't create share link.");
     } finally {
       setSharing(false);
     }

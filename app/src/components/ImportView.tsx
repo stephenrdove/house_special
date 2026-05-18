@@ -18,6 +18,7 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
   const [constraints, setConstraints] = useState<FamilyConstraints | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
+  const [generateWarning, setGenerateWarning] = useState('');
   const [startDate, setStartDate] = useState(getNextSunday);
   const [overwriteCount, setOverwriteCount] = useState(0);
 
@@ -51,8 +52,10 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
     setOverwriteCount(0);
     setGenerating(true);
     setGenerateError('');
+    setGenerateWarning('');
     try {
-      const data = await api.generatePlan(startDate);
+      const data = await api.generatePlan(startDate) as Awaited<ReturnType<typeof api.generatePlan>> & { warning?: string };
+      if (data.warning) setGenerateWarning(data.warning);
       importData(data);
     } catch (e: unknown) {
       if (e instanceof ApiError && e.rateLimited) {
@@ -185,6 +188,11 @@ export function ImportView({ state, mutate, onImportSuccess }: Props) {
             </button>
             {generateError && (
               <p style={{ fontSize: 13, color: 'var(--red)' }}>{generateError}</p>
+            )}
+            {generateWarning && (
+              <p style={{ fontSize: 13, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 6, padding: '8px 10px' }}>
+                ⚠ {generateWarning}
+              </p>
             )}
           </div>
         </div>

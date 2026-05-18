@@ -138,9 +138,12 @@ export async function handleCallback(request: Request, env: Env): Promise<Respon
   const { id_token } = await tokenRes.json() as { id_token: string };
 
   // Decode JWT payload (no signature verification needed — we just exchanged with Google)
-  const payload = JSON.parse(atob(id_token.split('.')[1])) as {
-    sub: string; email: string; name: string; picture: string;
-  };
+  let payload: { sub: string; email: string; name: string; picture: string };
+  try {
+    payload = JSON.parse(atob(id_token.split('.')[1]));
+  } catch {
+    return new Response('Invalid token from Google', { status: 502 });
+  }
 
   // Upsert user in D1
   const now = Date.now();

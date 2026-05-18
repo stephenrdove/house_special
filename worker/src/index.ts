@@ -16,6 +16,7 @@ export default {
 
     let response: Response;
 
+    try {
     // ── Auth routes ────────────────────────────────────────────────────────────
     if (url.pathname === '/auth/login')    response = await handleLogin(env);
     else if (url.pathname === '/auth/callback') response = await handleCallback(request, env);
@@ -67,6 +68,13 @@ export default {
     else {
       response = new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    } catch (err) {
+      console.error('Unhandled worker error', err);
+      response = new Response(JSON.stringify({ error: 'Internal server error' }), {
+        status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
     }

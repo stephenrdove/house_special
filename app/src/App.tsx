@@ -262,7 +262,7 @@ export default function App() {
         <main className="main-content">
           {view === 'calendar' && <CalendarView state={state} mutate={mutate} recipes={recipes} />}
           {view === 'grocery' && <GroceryView state={state} mutate={mutate} />}
-          {view === 'recipes' && <RecipesView recipes={recipes} setRecipes={setRecipes} />}
+          {view === 'recipes' && <RecipesView recipes={recipes} setRecipes={setRecipes} showError={showError} />}
           {view === 'import' && (
             <ImportView
               state={state}

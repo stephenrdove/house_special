@@ -60,7 +60,7 @@ export function GroceryView({ state, mutate }: Props) {
   useEffect(() => {
     api.getFamily()
       .then(d => setAllergies(d.constraints?.allergies ?? []))
-      .catch(() => {});
+      .catch(err => console.warn('failed to load family allergies', err));
   }, []);
 
   const grouped = GROCERY_CATEGORIES.reduce<Record<string, typeof state.grocery>>(

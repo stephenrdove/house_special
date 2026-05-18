@@ -46,7 +46,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   me:           ()                              => req<User>('/auth/me'),
   logout:       ()                              => req<{ ok: boolean }>('/auth/logout'),
-  getState:     ()                              => req<AppState>('/state'),
+  getState:     ()                              => req<AppState & { updated_at: number }>('/state'),
   putState:     (state: AppState)               => req<{ ok: boolean }>('/state', { method: 'PUT', body: JSON.stringify(state) }),
   patchGrocery:  (id: string, checked: boolean) => req<{ ok: boolean }>(`/grocery/${id}`, { method: 'PATCH', body: JSON.stringify({ checked }) }),
   getFamily:        ()                                => req<{ familyId: string; members: FamilyMember[]; constraints: FamilyConstraints | null }>('/families/me'),
