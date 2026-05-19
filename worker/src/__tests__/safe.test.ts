@@ -130,12 +130,19 @@ describe('validateGroceryItems', () => {
     expect(validateGroceryItems({ items: [] })).toEqual([]);
   });
 
-  it('rejects malformed inputs', () => {
+  it('rejects structurally invalid inputs', () => {
     expect(validateGroceryItems(null)).toBeNull();
     expect(validateGroceryItems({})).toBeNull();
     expect(validateGroceryItems({ items: 'nope' })).toBeNull();
-    expect(validateGroceryItems({ items: [{ name: 'Salt', category: 'Other' /* no warn */ }] })).toBeNull();
-    expect(validateGroceryItems({ items: [{ name: 5, category: 'Other', warn: false, meal_ids: [] }] })).toBeNull();
+  });
+
+  it('coerces missing/non-boolean warn to false', () => {
+    const out = validateGroceryItems({ items: [{ name: 'Salt', category: 'Other' /* no warn */ }] });
+    expect(out).toEqual([{ name: 'Salt', category: 'Other', warn: false, meal_ids: [] }]);
+  });
+
+  it('skips items with invalid name and returns remaining valid items', () => {
+    expect(validateGroceryItems({ items: [{ name: 5, category: 'Other', warn: false, meal_ids: [] }] })).toEqual([]);
   });
 });
 

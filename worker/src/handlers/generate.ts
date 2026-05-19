@@ -237,6 +237,15 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
   });
 
   // ── Call 2: build grocery list ─────────────────────────────────────────────
+  // Use short tokens (m1–m7) instead of UUIDs in the LLM context so Haiku
+  // reliably copies them back in meal_ids. Map back to real UUIDs after.
+  const shortIdMap: Record<string, string> = {};  // short → real UUID
+  const daysForLLM = days.map((day, i) => {
+    const shortId = `m${i + 1}`;
+    shortIdMap[shortId] = day.id;
+    return { id: shortId, date: day.date, meal: day.meal, ...(day.notes ? { notes: day.notes } : {}), leftover: day.leftover };
+  });
+
   const allergyNote = constraints.allergies.length > 0
     ? `\nAllergies (mark warn: true for any item needing a certified safe version): ${constraints.allergies.join(', ')}`
     : '';
@@ -252,7 +261,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
       messages: [
         {
           role: 'user',
-          content: `Generate a complete grocery list for this meal plan:\n\n${JSON.stringify(days, null, 2)}\n\nInclude all ingredients needed. Deduplicate items across meals (e.g. olive oil used in 3 meals = one entry). For each item, set meal_ids to the array of meal IDs that require it. Call the build_grocery_list tool.`,
+          content: `Generate a complete grocery list for this meal plan:\n\n${JSON.stringify(daysForLLM, null, 2)}\n\nInclude all ingredients needed. Deduplicate items across meals (e.g. olive oil used in 3 meals = one entry). For each item, set meal_ids to the array of meal IDs (m1–m7) that require it. Call the build_grocery_list tool.`,
         },
       ],
     });
@@ -293,7 +302,7 @@ export async function handleGenerate(request: Request, env: Env): Promise<Respon
       name: item.name,
       category: item.category,
       warn: item.warn,
-      source_meal_ids: item.meal_ids,
+      source_meal_ids: item.meal_ids.map(sid => shortIdMap[sid] ?? sid).filter(Boolean),
     })),
   });
 }

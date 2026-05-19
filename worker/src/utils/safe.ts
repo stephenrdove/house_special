@@ -93,12 +93,14 @@ export function validateGroceryItems(input: unknown): ToolGroceryItem[] | null {
   if (!Array.isArray(items)) return null;
   const out: ToolGroceryItem[] = [];
   for (const i of items) {
-    if (typeof i !== 'object' || i === null) return null;
+    if (typeof i !== 'object' || i === null) continue;
     const r = i as Record<string, unknown>;
-    if (typeof r.name !== 'string' || typeof r.category !== 'string' || typeof r.warn !== 'boolean') return null;
+    if (typeof r.name !== 'string' || !r.name.trim()) continue;
+    if (typeof r.category !== 'string') continue;
     const category = GROCERY_CATEGORIES.has(r.category) ? r.category : 'Other';
+    const warn = r.warn === true;
     const meal_ids = Array.isArray(r.meal_ids) ? r.meal_ids.filter((m): m is string => typeof m === 'string') : [];
-    out.push({ name: r.name, category, warn: r.warn, meal_ids });
+    out.push({ name: r.name.trim(), category, warn, meal_ids });
   }
   return out;
 }
